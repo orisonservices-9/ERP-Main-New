@@ -1,0 +1,14 @@
+# ==== Runtime dependencies (all available on public PyPI) ====
+fastapi==0.110.1
+uvicorn==0.25.0
+motor==3.3.1
+pymongo==4.6.3
+pydantic>=2.6.4
+python-dotenv>=1.0.1
+pyjwt>=2.10.1
+python-multipart>=0.0.9
+
+# ==== Test dependencies ====
+pytest>=8.0.0
+pytest-xdist>=3.6.0
+requests>=2.31.0
