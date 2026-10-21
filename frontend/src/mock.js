@@ -16,7 +16,15 @@ export const NAV_ITEMS = [
       { label: 'View Students', path: '/students/view' },
       { label: 'Promote Student', path: '/students/promote' },
       { label: 'Transfer Student', path: '/students/transfer' },
-      { label: 'Admissions CRM', path: '/admissions' },
+    ],
+  },
+  {
+    key: 'admissions', label: 'Admissions Management', icon: UserCheck,
+    children: [
+      { label: 'Dashboard', path: '/admissions' },
+      { label: 'Enquiries & Follow-ups', path: '/admissions/enquiries' },
+      { label: 'Applications', path: '/admissions/applications' },
+      { label: 'Reports', path: '/admissions/reports' },
     ],
   },
   {
@@ -26,7 +34,8 @@ export const NAV_ITEMS = [
       { label: 'Academic Action Center', path: '/academics/action-center' },
       { label: 'Curriculum & Syllabus', path: '/academics/syllabus' },
       { label: 'Student Health Signals', path: '/academics/student-health' },
-      { label: 'Academic Interventions', path: '/academics/interventions' },
+      { label: 'Student Support Plans', path: '/academics/support-plans' },
+      { label: 'Classroom Observations', path: '/academics/classroom-observations' },
     ],
   },
   {

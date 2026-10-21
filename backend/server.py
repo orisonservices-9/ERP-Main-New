@@ -42,10 +42,12 @@ HOMEWORK_UPLOAD_DIR = ROOT_DIR / 'uploads' / 'homework'
 LEAVE_UPLOAD_DIR = ROOT_DIR / 'uploads' / 'leaves'
 PARENT_UPLOAD_DIR = ROOT_DIR / 'uploads' / 'parent'
 APPROVAL_UPLOAD_DIR = ROOT_DIR / 'uploads' / 'approvals'
+ADMISSION_UPLOAD_DIR = ROOT_DIR / 'uploads' / 'admissions'
 HOMEWORK_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 LEAVE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 PARENT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 APPROVAL_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+ADMISSION_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount('/uploads', StaticFiles(directory=ROOT_DIR / 'uploads'), name='uploads')
 
 logging.basicConfig(level=logging.INFO)
@@ -59,13 +61,13 @@ ROLE_CONFIG = {
     },
     'director': {
         'name': 'Director',
-        'menu': ['dashboard', 'management', 'student', 'academics', 'attendance', 'teachers', 'staff',
+        'menu': ['dashboard', 'management', 'student', 'admissions', 'academics', 'attendance', 'teachers', 'staff',
                  'exams', 'marks', 'homework', 'leave', 'timetable', 'notifications',
                  'transport', 'communications', 'visitor', 'question', 'collections', 'hall_tickets', 'multibranch', 'settings'],
     },
     'academic_coordinator': {
         'name': 'Academic Coordinator',
-        'menu': ['dashboard', 'academics', 'notifications'],
+        'menu': ['dashboard', 'admissions', 'academics', 'notifications'],
     },
     'fee_manager': {
         'name': 'Fee Manager',
@@ -115,6 +117,25 @@ class StudentPromotionRequest(BaseModel):
 
 class StudentPromotionConfirm(BaseModel):
     otp: str
+
+class StudentTransferRequest(BaseModel):
+    student_id: str
+    transfer_type: str
+    reason: str
+    effective_date: str
+    destination_school: str = ""
+    destination_branch: str = ""
+    target_class: str = ""
+    target_section: str = ""
+    parent_request_no: str = ""
+    remarks: str = ""
+
+class StudentTransferClearance(BaseModel):
+    fee_cleared: str = "No"
+    library_cleared: str = "No"
+    transport_cleared: str = "No"
+    class_teacher_cleared: str = "No"
+    documents_returned: str = "No"
 
 class ParentOtpRequest(BaseModel):
     mobile: str
@@ -297,10 +318,16 @@ class ClassroomObservation(BaseModel):
     subject: str
     unit_name: str = ""
     observation_date: str = ""
+    observation_type: str = "Scheduled"
     plan_score: int = Field(ge=0, le=5)
     behaviour_score: int = Field(ge=0, le=5)
     engagement_score: int = Field(ge=0, le=5)
     notes: str = ""
+    strengths: str = ""
+    improvement_area: str = ""
+    agreed_action: str = ""
+    follow_up_date: str = ""
+    feedback_status: str = "Pending"
     academic_year: str = "2026-2027"
 
 # ---------------- Auth helpers ----------------
@@ -417,6 +444,112 @@ async def get_student(sid: str, role: str = Depends(get_current)):
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     return clean(doc)
+
+TRANSFER_TYPES = {'School Transfer / TC', 'Branch Transfer'}
+TRANSFER_CLEARANCE_VALUES = {'Yes', 'No', 'Not Applicable'}
+TRANSFER_CLEARANCE_KEYS = {
+    'fee_cleared', 'library_cleared', 'transport_cleared',
+    'class_teacher_cleared', 'documents_returned',
+}
+
+@api_router.get('/student-transfers')
+async def list_student_transfers(role: str = Depends(get_current)):
+    require_roles(role, {'admin', 'director', 'fee_manager'})
+    rows = await db.student_transfers.find().sort('created_at', -1).to_list(1000)
+    return [clean(row) for row in rows]
+
+@api_router.post('/student-transfers')
+async def create_student_transfer(payload: StudentTransferRequest, role: str = Depends(get_current)):
+    require_roles(role, {'admin'})
+    student = await db.students.find_one({'id': payload.student_id})
+    if not student:
+        raise HTTPException(status_code=404, detail='The selected student no longer exists.')
+    if str(student.get('status') or 'Active') != 'Active':
+        raise HTTPException(status_code=422, detail='Only an active student can begin a new transfer.')
+    if payload.transfer_type not in TRANSFER_TYPES:
+        raise HTTPException(status_code=422, detail='Choose a valid transfer type.')
+    if not payload.reason.strip() or not payload.effective_date.strip():
+        raise HTTPException(status_code=422, detail='Reason and effective date are required.')
+    if payload.transfer_type == 'School Transfer / TC' and not payload.destination_school.strip():
+        raise HTTPException(status_code=422, detail='Enter the destination school for a Transfer Certificate.')
+    if payload.transfer_type == 'Branch Transfer' and not payload.destination_branch.strip():
+        raise HTTPException(status_code=422, detail='Enter the destination branch.')
+    if await db.student_transfers.find_one({'student_id': payload.student_id, 'status': {'$in': ['Pending Clearance', 'Ready for Approval']}}):
+        raise HTTPException(status_code=409, detail='This student already has an open transfer request.')
+
+    now = datetime.utcnow().isoformat()
+    transfer_id = f"TR-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:5].upper()}"
+    record = {
+        'id': transfer_id, **payload.dict(), 'student_name': student.get('name', ''),
+        'admission_no': student.get('admission_no', ''), 'academic_year': student.get('academic_year', ''),
+        'source_class': student.get('class_name', ''), 'source_section': student.get('section', ''),
+        'parent_name': student.get('father_name') or student.get('parent_name') or student.get('guardian_name', ''),
+        'parent_phone': student.get('mobile') or student.get('parent_phone') or student.get('phone', ''),
+        'clearances': {key: 'No' for key in TRANSFER_CLEARANCE_KEYS},
+        'status': 'Pending Clearance', 'tc_number': '', 'created_at': now,
+        'created_by': ROLE_CONFIG[role]['name'], 'updated_at': now,
+    }
+    await db.student_transfers.insert_one(dict(record))
+    await add_event('warning', 'Student transfer initiated', f"Transfer clearance started for {record['student_name']} ({record['admission_no']}).")
+    return clean(record)
+
+@api_router.put('/student-transfers/{transfer_id}/clearances')
+async def update_student_transfer_clearances(transfer_id: str, payload: StudentTransferClearance, role: str = Depends(get_current)):
+    require_roles(role, {'admin', 'director', 'fee_manager'})
+    record = await db.student_transfers.find_one({'id': transfer_id})
+    if not record:
+        raise HTTPException(status_code=404, detail='Transfer request not found.')
+    if record.get('status') == 'Issued':
+        raise HTTPException(status_code=409, detail='An issued transfer cannot be changed.')
+    clearances = payload.dict()
+    if any(value not in TRANSFER_CLEARANCE_VALUES for value in clearances.values()):
+        raise HTTPException(status_code=422, detail='Each department must be marked Yes, No, or Not Applicable.')
+    status = 'Ready for Approval'
+    await db.student_transfers.update_one({'id': transfer_id}, {'$set': {
+        'clearances': clearances, 'status': status, 'updated_at': datetime.utcnow().isoformat(),
+        'clearance_updated_by': ROLE_CONFIG[role]['name'],
+    }})
+    return {'ok': True, 'status': status, 'clearances': clearances}
+
+@api_router.post('/student-transfers/{transfer_id}/issue')
+async def issue_student_transfer(transfer_id: str, role: str = Depends(get_current)):
+    require_roles(role, {'admin', 'director'})
+    record = await db.student_transfers.find_one({'id': transfer_id})
+    if not record:
+        raise HTTPException(status_code=404, detail='Transfer request not found.')
+    if record.get('status') == 'Issued':
+        return clean(record)
+    clearances = record.get('clearances') or {}
+    if not all(clearances.get(key) in TRANSFER_CLEARANCE_VALUES or isinstance(clearances.get(key), bool) for key in TRANSFER_CLEARANCE_KEYS):
+        raise HTTPException(status_code=422, detail='Record every department as Yes, No, or Not Applicable before issuing the transfer.')
+    student = await db.students.find_one({'id': record.get('student_id')})
+    if not student:
+        raise HTTPException(status_code=404, detail='The student record no longer exists.')
+
+    now = datetime.utcnow()
+    tc_number = f"TC-{now.strftime('%Y')}-{await db.student_transfers.count_documents({'status': 'Issued'}) + 1:05d}"
+    student_updates = {'last_transfer_id': transfer_id, 'transfer_issued_at': now.isoformat()}
+    if record.get('transfer_type') == 'Branch Transfer':
+        student_updates.update({'status': 'Transferred to Branch', 'destination_branch': record.get('destination_branch', '')})
+    else:
+        student_updates.update({'status': 'Transferred Out', 'destination_school': record.get('destination_school', '')})
+    await db.students.update_one({'id': student['id']}, {'$set': student_updates})
+    await db.student_enrollments.update_one(
+        {'student_id': student['id'], 'academic_year': student.get('academic_year', '')},
+        {'$set': {
+            'id': str(uuid.uuid4()), 'student_id': student['id'], 'academic_year': student.get('academic_year', ''),
+            'class_name': student.get('class_name', ''), 'section': student.get('section', ''),
+            'status': student_updates.get('status', 'Active'), 'student_snapshot': clean(dict(student)),
+            'transfer_id': transfer_id, 'archived_at': now.isoformat(),
+        }}, upsert=True,
+    )
+    issued = {
+        'status': 'Issued', 'tc_number': tc_number, 'issued_at': now.isoformat(),
+        'issued_by': ROLE_CONFIG[role]['name'], 'updated_at': now.isoformat(),
+    }
+    await db.student_transfers.update_one({'id': transfer_id}, {'$set': issued})
+    await add_event('success', 'Student transfer issued', f"{tc_number} was issued for {record.get('student_name', 'Student')}. Academic records remain preserved.")
+    return clean({**record, **issued})
 
 REQUIRED_STUDENT_FIELDS = {
     'name': 'Student Name', 'admission_no': 'Admission Number', 'class_name': 'Class',
@@ -1408,6 +1541,10 @@ async def create_teacher_allocation(a: TeacherAllocation, role: str = Depends(ge
     doc['teacher_name'] = teacher.get('name', '')
     doc['academic_year'] = (structure or {}).get('academic_year') or a.academic_year
     await db.teacher_allocations.insert_one(dict(doc))
+    await db.curriculum_units.update_many(
+        {'class_name': a.class_name, 'section': a.section, 'subject': a.subject, 'status': {'$ne': 'Completed'}},
+        {'$set': {'teacher_id': doc['teacher_id'], 'teacher_name': doc['teacher_name']}}
+    )
     await add_event('info', 'Teacher allocated', f"{doc['teacher_name']} was allocated to {doc['subject']} for {doc['class_name']} {doc['section']}.")
     return doc
 
@@ -1883,6 +2020,19 @@ async def create_classroom_observation(o: ClassroomObservation, role: str = Depe
     await db.classroom_observations.insert_one(dict(doc))
     await add_event('info', 'Classroom observation added', f"Observation recorded for {doc['teacher_name']} in {doc['class_name']}.")
     return doc
+
+@api_router.put("/classroom-observations/{oid}")
+async def update_classroom_observation(oid: str, payload: dict, role: str = Depends(get_current)):
+    if role not in ('admin', 'academic_coordinator'):
+        raise HTTPException(status_code=403, detail='Only Admin or Academic Coordinator can update a classroom observation.')
+    existing = await db.classroom_observations.find_one({'id': oid})
+    if not existing:
+        raise HTTPException(status_code=404, detail='Classroom observation not found.')
+    allowed = {'strengths', 'improvement_area', 'agreed_action', 'follow_up_date', 'feedback_status', 'notes'}
+    changes = {key: value for key, value in payload.items() if key in allowed}
+    changes['updated'] = datetime.utcnow().isoformat()
+    await db.classroom_observations.update_one({'id': oid}, {'$set': changes})
+    return clean(await db.classroom_observations.find_one({'id': oid}))
 
 @api_router.delete("/classroom-observations/{oid}")
 async def delete_classroom_observation(oid: str, role: str = Depends(get_current)):
@@ -2502,7 +2652,13 @@ async def save_marks(ms: MarksSet, role: str = Depends(get_current)):
         if doc.get('subject') not in allowed_subjects:
             raise HTTPException(status_code=422, detail='Choose a subject included in the selected exam.')
     total_max = doc['max_written'] + doc['max_practical']
+    enrolled = await db.students.find({'class_name': doc['class_name'], 'section': doc['section']}).to_list(2000)
+    student_by_name = {(item.get('name') or '').strip().lower(): item.get('id') for item in enrolled if item.get('name') and item.get('id')}
     for r in doc['rows']:
+        if not r.get('student_id'):
+            r['student_id'] = student_by_name.get((r.get('name') or '').strip().lower(), '')
+        if not r.get('student_id'):
+            raise HTTPException(status_code=422, detail=f"Marks row for {r.get('name') or 'a student'} is not linked to a valid student ID.")
         r['total'] = (r.get('written', 0) or 0) + (r.get('practical', 0) or 0)
     doc['total_max'] = total_max
     await db.marks_sets.replace_one(
@@ -3556,14 +3712,257 @@ async def get_student_academic_history(sid: str, role: str = Depends(get_current
 # Admissions CRM and collection intelligence
 @api_router.get("/admission-leads")
 async def list_admission_leads(role: str = Depends(get_current)):
-    return [clean(x) for x in await db.admission_leads.find().sort('created', -1).to_list(1000)]
+    leads = await db.admission_leads.find().sort('created', -1).to_list(1000)
+    for lead in leads:
+        if not lead.get('experience_token'):
+            token = secrets.token_urlsafe(18)
+            await db.admission_leads.update_one({'_id': lead['_id']}, {'$set': {'experience_token': token}})
+            lead['experience_token'] = token
+    return [clean(x) for x in leads]
 
 @api_router.post("/admission-leads")
 async def create_admission_lead(payload: dict, role: str = Depends(get_current)):
+    require_roles(role, {'admin', 'director', 'fee_manager'})
     now = datetime.utcnow()
-    payload.setdefault('id', str(uuid.uuid4())); payload.setdefault('stage', 'Enquiry'); payload.setdefault('created', now.isoformat()); payload.setdefault('last_activity', now.isoformat())
-    payload['followups'] = [{'day': 0, 'task': 'Call parent', 'status': 'Pending'}, {'day': 1, 'task': 'Send information', 'status': 'Pending'}, {'day': 3, 'task': 'Follow-up call', 'status': 'Pending'}, {'day': 7, 'task': 'Campus visit reminder', 'status': 'Pending'}, {'day': 14, 'task': 'Final follow-up', 'status': 'Pending'}]
+    parent_name = str(payload.get('name') or '').strip()
+    child_name = str(payload.get('child_name') or '').strip()
+    phone = ''.join(character for character in str(payload.get('phone') or '') if character.isdigit())
+    interested_class = str(payload.get('interested_class') or '').strip()
+    counsellor = str(payload.get('counsellor') or '').strip()
+    next_follow_up = str(payload.get('next_follow_up') or '').strip()
+    if not parent_name or not child_name or len(phone) < 10 or not interested_class or not counsellor or not next_follow_up:
+        raise HTTPException(status_code=422, detail='Parent name, child name, valid phone, interested class, assigned counsellor and next follow-up are required.')
+    duplicate = await db.admission_leads.find_one({'phone': phone, 'stage': {'$nin': ['Admitted', 'Lost']}})
+    if duplicate:
+        raise HTTPException(status_code=409, detail=f"An active enquiry already exists for this phone under {duplicate.get('child_name') or duplicate.get('name')}.")
+    payload['name'] = parent_name; payload['child_name'] = child_name; payload['phone'] = phone
+    payload['counsellor'] = counsellor; payload['next_follow_up'] = next_follow_up
+    payload.setdefault('id', f"ENQ-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:5].upper()}"); payload.setdefault('stage', 'Enquiry'); payload.setdefault('priority', 'Warm'); payload.setdefault('created', now.isoformat()); payload.setdefault('last_activity', now.isoformat()); payload.setdefault('experience_token', secrets.token_urlsafe(18))
+    payload['activities'] = [{'at': now.isoformat(), 'outcome': 'Enquiry received', 'notes': str(payload.get('notes') or '').strip(), 'next_follow_up': payload.get('next_follow_up', ''), 'by': ROLE_CONFIG[role]['name']}]
+    payload['followups'] = [{'day': 0, 'task': 'Call parent', 'status': 'Pending'}, {'day': 1, 'task': 'Send school information', 'status': 'Pending'}, {'day': 3, 'task': 'Follow-up call', 'status': 'Pending'}, {'day': 7, 'task': 'Campus visit reminder', 'status': 'Pending'}, {'day': 14, 'task': 'Final follow-up', 'status': 'Pending'}]
     await db.admission_leads.insert_one(dict(payload)); return payload
+
+@api_router.put("/admission-leads/{lead_id}")
+async def update_admission_lead(lead_id: str, payload: dict, role: str = Depends(get_current)):
+    require_roles(role, {'admin', 'director', 'fee_manager'})
+    record = await db.admission_leads.find_one({'id': lead_id})
+    if not record:
+        raise HTTPException(status_code=404, detail='Admission enquiry not found.')
+    allowed = {'stage', 'priority', 'counsellor', 'interested_class', 'source', 'next_follow_up', 'lost_reason', 'notes', 'visit_date', 'assessment_date', 'assessment_score', 'assessment_max_marks', 'assessment_cutoff', 'assessment_result', 'recommended_class', 'parent_experience_status', 'admission_fee', 'tuition_fee_note', 'transport_fee_note', 'fee_explained_at', 'parent_decision', 'decision_note', 'application_printed_at', 'application_signed', 'admission_fee_paid', 'admission_fee_paid_amount', 'admission_fee_payment_mode', 'admission_fee_receipt_no'}
+    changes = {key: value for key, value in payload.items() if key in allowed}
+    if 'counsellor' in changes and not str(changes['counsellor'] or '').strip():
+        raise HTTPException(status_code=422, detail='Assign a counsellor before saving the enquiry.')
+    if changes.get('admission_fee_paid') and float(changes.get('admission_fee_paid_amount') or record.get('admission_fee_paid_amount') or 0) <= 0:
+        raise HTTPException(status_code=422, detail='Enter the admission-fee amount received before marking it paid.')
+    if changes.get('stage') and changes['stage'] not in {'Enquiry', 'Contacted', 'Visit', 'Application', 'Selected', 'Admitted', 'Lost'}:
+        raise HTTPException(status_code=422, detail='Choose a valid admission stage.')
+    changes['last_activity'] = datetime.utcnow().isoformat()
+    changes['updated_by'] = ROLE_CONFIG[role]['name']
+    await db.admission_leads.update_one({'id': lead_id}, {'$set': changes})
+    return clean(await db.admission_leads.find_one({'id': lead_id}))
+
+@api_router.post("/admission-leads/{lead_id}/activities")
+async def add_admission_activity(lead_id: str, payload: dict, role: str = Depends(get_current)):
+    require_roles(role, {'admin', 'director', 'fee_manager'})
+    record = await db.admission_leads.find_one({'id': lead_id})
+    if not record:
+        raise HTTPException(status_code=404, detail='Admission enquiry not found.')
+    if not str(record.get('counsellor') or '').strip():
+        raise HTTPException(status_code=422, detail='Assign a counsellor before recording the follow-up.')
+    outcome = str(payload.get('outcome') or '').strip()
+    if not outcome:
+        raise HTTPException(status_code=422, detail='Choose a follow-up outcome.')
+    next_follow_up = str(payload.get('next_follow_up') or '').strip()
+    if outcome not in {'Not interested', 'Wrong number'} and not next_follow_up:
+        raise HTTPException(status_code=422, detail='Choose the next follow-up date so this family stays in the counsellor queue.')
+    now = datetime.utcnow()
+    activity = {'at': now.isoformat(), 'outcome': outcome, 'notes': str(payload.get('notes') or '').strip(), 'next_follow_up': next_follow_up, 'visit_date': str(payload.get('visit_date') or ''), 'by': ROLE_CONFIG[role]['name']}
+    stage_map = {'Parent contacted': 'Contacted', 'Information shared': 'Contacted', 'Campus visit scheduled': 'Visit', 'Application promised': 'Application', 'Not interested': 'Lost'}
+    updates = {'last_activity': now.isoformat(), 'last_outcome': outcome, 'next_follow_up': activity['next_follow_up'], 'updated_by': ROLE_CONFIG[role]['name']}
+    if outcome in stage_map: updates['stage'] = stage_map[outcome]
+    if activity['visit_date']: updates['visit_date'] = activity['visit_date']
+    if outcome == 'Not interested': updates['lost_reason'] = str(payload.get('lost_reason') or 'Not interested').strip()
+    await db.admission_leads.update_one({'id': lead_id}, {'$set': updates, '$push': {'activities': activity}})
+    return clean(await db.admission_leads.find_one({'id': lead_id}))
+
+@api_router.post("/admission-leads/{lead_id}/confirm-admission")
+async def confirm_admission_lead(lead_id: str, payload: dict, role: str = Depends(get_current)):
+    require_roles(role, {'admin', 'director'})
+    lead = await db.admission_leads.find_one({'id': lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail='Admission application not found.')
+    if lead.get('stage') == 'Admitted' and lead.get('student_id'):
+        student = await db.students.find_one({'id': lead['student_id']})
+        return {'ok': True, 'student': clean(student), 'lead': clean(lead)}
+    if lead.get('stage') != 'Selected':
+        raise HTTPException(status_code=422, detail='Mark the application as Selected before confirming admission.')
+    if lead.get('parent_decision') != 'Confirmed':
+        raise HTTPException(status_code=422, detail='Record the parent decision as Confirmed before enrolment.')
+    if not lead.get('application_signed'):
+        raise HTTPException(status_code=422, detail='Confirm that the parent signed the printed admission application.')
+    if not lead.get('admission_fee_paid'):
+        raise HTTPException(status_code=422, detail='Record the admission-fee payment before enrolment.')
+    required_documents = {'birth_certificate': 'Birth certificate', 'address_proof': 'Address proof', 'student_photo': 'Student photograph'}
+    documents = lead.get('documents') or {}
+    missing_documents = [label for key, label in required_documents.items() if not documents.get(key)]
+    if not (documents.get('transfer_certificate') or documents.get('bonafide_certificate')):
+        missing_documents.append('Transfer certificate or bonafide certificate')
+    if missing_documents:
+        raise HTTPException(status_code=422, detail=f"Upload mandatory documents before enrolment: {', '.join(missing_documents)}.")
+    admission_no = str(payload.get('admission_no') or '').strip()
+    class_name = str(payload.get('class_name') or '').strip()
+    section = str(payload.get('section') or '').strip()
+    academic_year = str(payload.get('academic_year') or lead.get('academic_year') or '2026-2027').strip()
+    if not admission_no or not class_name or not section:
+        raise HTTPException(status_code=422, detail='Admission number, class and section are required.')
+    if await db.students.find_one({'admission_no': admission_no}):
+        raise HTTPException(status_code=409, detail=f"Admission number '{admission_no}' already exists.")
+    structure = await db.academic_structure.find_one({'id': 'school-structure'})
+    if structure and structure.get('classes'):
+        allowed = {(item.get('name'), section_item.get('name')) for item in structure.get('classes', []) for section_item in item.get('sections', [])}
+        if (class_name, section) not in allowed:
+            raise HTTPException(status_code=422, detail='Choose a class and section created in Academic Setup.')
+        academic_year = structure.get('academic_year') or academic_year
+    student = {
+        'id': f"EP-{uuid.uuid4().hex[:8].upper()}", 'name': lead.get('child_name') or lead.get('name'),
+        'admission_no': admission_no, 'class_name': class_name, 'section': section,
+        'roll': str(payload.get('roll') or '').strip(), 'academic_year': academic_year,
+        'status': 'Active', 'gender': str(lead.get('gender') or 'Not Specified'),
+        'father_name': lead.get('name', ''), 'parent_name': lead.get('name', ''),
+        'mobile': lead.get('phone', ''), 'parent_phone': lead.get('phone', ''),
+        'admission_source': lead.get('source', ''), 'admission_lead_id': lead_id,
+        'document_checklist': {
+            'birth_certificate': bool(documents.get('birth_certificate')),
+            'previous_record': bool(documents.get('transfer_certificate') or documents.get('bonafide_certificate')),
+            'photos': bool(documents.get('student_photo')),
+            'address_proof': bool(documents.get('address_proof')),
+        },
+        'admission_documents': documents,
+        'created': datetime.utcnow().isoformat(), 'balance': 0,
+    }
+    await db.students.insert_one(dict(student))
+    fees_added = await apply_active_fee_structures(student)
+    now = datetime.utcnow().isoformat()
+    paid_amount = float(lead.get('admission_fee_paid_amount') or lead.get('admission_fee') or 0)
+    receipt = None
+    if paid_amount > 0:
+        admission_invoice = await db.fees.find_one({'student_id': student['id'], '$or': [
+            {'category': {'$regex': 'admission', '$options': 'i'}},
+            {'fee_name': {'$regex': 'admission', '$options': 'i'}},
+        ]})
+        if not admission_invoice:
+            admission_invoice = {
+                'id': f"FEE-{uuid.uuid4().hex[:8].upper()}", 'structure_id': '', 'student_id': student['id'],
+                'name': student['name'], 'fee_name': 'Admission Fee', 'category': 'Admission',
+                'description': 'Admission fee collected during enrolment', 'academic_year': academic_year,
+                'due_date': now[:10], 'total': paid_amount, 'paid': 0, 'discount': 0,
+                'due': paid_amount, 'status': 'Unpaid', 'created': now,
+            }
+            await db.fees.insert_one(dict(admission_invoice)); fees_added += 1
+        amount_applied = min(paid_amount, float(admission_invoice.get('due') or paid_amount))
+        balance_after = max(0, float(admission_invoice.get('due') or 0) - amount_applied)
+        await db.fees.update_one({'id': admission_invoice['id']}, {'$set': {
+            'paid': float(admission_invoice.get('paid') or 0) + amount_applied,
+            'due': balance_after, 'status': 'Paid' if balance_after <= 0 else 'Partial',
+            'method': lead.get('admission_fee_payment_mode', 'Cash'),
+        }})
+        receipt = {
+            'id': str(lead.get('admission_fee_receipt_no') or '').strip() or f"RCP-{uuid.uuid4().hex[:10].upper()}",
+            'fee_id': admission_invoice['id'], 'student_id': student['id'], 'student_name': student['name'],
+            'fee_name': admission_invoice.get('fee_name', 'Admission Fee'), 'amount': amount_applied,
+            'discount': 0, 'method': lead.get('admission_fee_payment_mode', 'Cash'), 'balance_after': balance_after,
+            'academic_year': academic_year, 'admission_no': admission_no, 'class_name': class_name,
+            'section': section, 'parent_name': student['parent_name'], 'parent_phone': student['parent_phone'],
+            'paid_at': now, 'received_by': ROLE_CONFIG[role]['name'], 'source': 'Admission Management',
+        }
+        if not await db.fee_receipts.find_one({'id': receipt['id']}):
+            await db.fee_receipts.insert_one(dict(receipt))
+        await sync_student_fee_balance(student['id'])
+    await db.admission_leads.update_one({'id': lead_id}, {'$set': {'stage': 'Admitted', 'student_id': student['id'], 'admission_no': admission_no, 'confirmed_at': now, 'last_activity': now, 'updated_by': ROLE_CONFIG[role]['name']}, '$push': {'activities': {'at': now, 'outcome': 'Admission confirmed', 'notes': f"Student record {admission_no} created in {class_name} {section}.", 'by': ROLE_CONFIG[role]['name']}}})
+    await add_event('success', 'Admission confirmed', f"{student['name']} was admitted to {class_name} {section} with admission number {admission_no}.")
+    return {'ok': True, 'student': clean(student), 'fees_assigned': fees_added, 'receipt': clean(receipt) if receipt else None, 'lead': clean(await db.admission_leads.find_one({'id': lead_id}))}
+
+@api_router.post('/admission-leads/{lead_id}/documents/{document_type}')
+async def upload_admission_document(lead_id: str, document_type: str, file: UploadFile = File(...), role: str = Depends(get_current)):
+    require_roles(role, {'admin', 'director', 'fee_manager'})
+    lead = await db.admission_leads.find_one({'id': lead_id})
+    if not lead: raise HTTPException(status_code=404, detail='Admission application not found.')
+    allowed_types = {'bonafide_certificate', 'transfer_certificate', 'birth_certificate', 'address_proof', 'student_photo'}
+    if document_type not in allowed_types: raise HTTPException(status_code=422, detail='Choose a valid admission document type.')
+    content = await file.read()
+    if len(content) > 8 * 1024 * 1024: raise HTTPException(status_code=413, detail='Upload a file smaller than 8 MB.')
+    extension = Path(file.filename or '').suffix.lower()
+    if extension not in {'.pdf', '.png', '.jpg', '.jpeg'}: raise HTTPException(status_code=422, detail='Upload a PDF, PNG or JPG file.')
+    stored_name = f"{lead_id}-{document_type}-{uuid.uuid4().hex[:8]}{extension}"
+    (ADMISSION_UPLOAD_DIR / stored_name).write_bytes(content)
+    document = {'type': document_type, 'name': file.filename, 'url': f'/uploads/admissions/{stored_name}', 'uploaded_at': datetime.utcnow().isoformat(), 'uploaded_by': ROLE_CONFIG[role]['name']}
+    await db.admission_leads.update_one({'id': lead_id}, {'$set': {f'documents.{document_type}': document, 'last_activity': datetime.utcnow().isoformat()}})
+    return document
+
+@api_router.get('/admission-assessment-rules')
+async def get_admission_assessment_rules(role: str = Depends(get_current)):
+    rules = [clean(item) for item in await db.admission_assessment_rules.find().sort('class_name', 1).to_list(100)]
+    if rules: return rules
+    structure = await db.academic_structure.find_one({'id': 'school-structure'}) or {}
+    return [{'class_name': item.get('name'), 'maximum_marks': 100, 'cutoff_marks': 40, 'approved_by': 'Principal / Academic Coordinator'} for item in structure.get('classes', [])]
+
+@api_router.put('/admission-assessment-rules/{class_name}')
+async def save_admission_assessment_rule(class_name: str, payload: dict, role: str = Depends(get_current)):
+    require_roles(role, {'director', 'academic_coordinator', 'admin'})
+    maximum = float(payload.get('maximum_marks') or 0); cutoff = float(payload.get('cutoff_marks') or 0)
+    if maximum <= 0 or cutoff < 0 or cutoff > maximum:
+        raise HTTPException(status_code=422, detail='Enter a valid maximum score and cut-off.')
+    rule = {'class_name': class_name, 'maximum_marks': maximum, 'cutoff_marks': cutoff, 'academic_year': str(payload.get('academic_year') or ''), 'approved_by': ROLE_CONFIG[role]['name'], 'approved_at': datetime.utcnow().isoformat()}
+    await db.admission_assessment_rules.update_one({'class_name': class_name}, {'$set': rule}, upsert=True)
+    return rule
+
+@api_router.post('/admission-leads/{lead_id}/academic-decision')
+async def save_admission_academic_decision(lead_id: str, payload: dict, role: str = Depends(get_current)):
+    require_roles(role, {'academic_coordinator', 'admin', 'director'})
+    lead = await db.admission_leads.find_one({'id': lead_id})
+    if not lead: raise HTTPException(status_code=404, detail='Admission application not found.')
+    structure = await db.academic_structure.find_one({'id': 'school-structure'}) or {}
+    class_names = {str(item.get('name') or '').strip() for item in structure.get('classes', [])}
+    applied_raw = str(lead.get('interested_class') or '').strip()
+    applied_class = next((name for name in class_names if name.lower() == applied_raw.lower()), applied_raw)
+    rule = await db.admission_assessment_rules.find_one({'class_name': applied_class}) or {'maximum_marks': 100, 'cutoff_marks': 40, 'approved_by': 'School academic policy'}
+    score = float(payload.get('assessment_score') or 0); maximum = float(rule.get('maximum_marks') or 100); cutoff = float(rule.get('cutoff_marks') or 40)
+    if score < 0 or score > maximum: raise HTTPException(status_code=422, detail=f'Assessment score must be between 0 and {maximum:g}.')
+    recommended_class = str(payload.get('recommended_class') or applied_class).strip()
+    if not recommended_class: raise HTTPException(status_code=422, detail='Academic team must choose a recommended class.')
+    if class_names and recommended_class not in class_names:
+        raise HTTPException(status_code=422, detail='Choose the recommended class from Academic Setup.')
+    now = datetime.utcnow().isoformat(); passed = score >= cutoff
+    decision = {'assessment_date': str(payload.get('assessment_date') or ''), 'assessment_score': score, 'assessment_max_marks': maximum, 'assessment_cutoff': cutoff, 'assessment_result': 'Passed' if passed else 'Needs Review', 'recommended_class': recommended_class, 'academic_remarks': str(payload.get('academic_remarks') or '').strip(), 'recommended_by': ROLE_CONFIG[role]['name'], 'recommended_at': now, 'academic_decision_status': 'Pending Approval' if passed else 'Needs Review', 'approved_by': '', 'approved_at': '', 'cutoff_approved_by': rule.get('approved_by', ''), 'parent_experience_status': str(payload.get('parent_experience_status') or lead.get('parent_experience_status') or 'Scheduled'), 'stage': 'Application', 'last_activity': now}
+    await db.admission_leads.update_one({'id': lead_id}, {'$set': decision, '$push': {'activities': {'at': now, 'outcome': 'Academic recommendation submitted', 'notes': f"Score {score:g}/{maximum:g}; cut-off {cutoff:g}; recommended {recommended_class}. Principal approval pending.", 'by': ROLE_CONFIG[role]['name']}}})
+    return clean(await db.admission_leads.find_one({'id': lead_id}))
+
+@api_router.post('/admission-leads/{lead_id}/academic-approval')
+async def approve_admission_academic_decision(lead_id: str, payload: dict, role: str = Depends(get_current)):
+    require_roles(role, {'director', 'admin'})
+    lead = await db.admission_leads.find_one({'id': lead_id})
+    if not lead: raise HTTPException(status_code=404, detail='Admission application not found.')
+    if lead.get('academic_decision_status') != 'Pending Approval':
+        raise HTTPException(status_code=422, detail='The academic team must submit a passing recommendation first.')
+    now = datetime.utcnow().isoformat()
+    updates = {'academic_decision_status': 'Approved', 'approved_by': ROLE_CONFIG[role]['name'], 'approved_at': now, 'stage': 'Selected', 'last_activity': now}
+    await db.admission_leads.update_one({'id': lead_id}, {'$set': updates, '$push': {'activities': {
+        'at': now, 'outcome': 'Academic recommendation approved',
+        'notes': str(payload.get('remarks') or f"Approved for {lead.get('recommended_class') or lead.get('interested_class')}.").strip(),
+        'by': ROLE_CONFIG[role]['name'],
+    }}})
+    return clean(await db.admission_leads.find_one({'id': lead_id}))
+
+@api_router.get('/admission-experience/{token}')
+async def public_admission_experience(token: str):
+    lead = await db.admission_leads.find_one({'experience_token': token})
+    if not lead: raise HTTPException(status_code=404, detail='Admission experience link is invalid.')
+    settings = await db.settings.find_one({'id': 'school-settings'}) or {}
+    return {'school_name': settings.get('schoolName', 'Orison School'), 'child_name': lead.get('child_name', ''), 'interested_class': lead.get('interested_class', ''), 'visit_date': lead.get('visit_date', ''), 'sections': [
+        {'title': 'How children learn here', 'body': 'Activity-based teaching, clear explanations, regular practice and individual support.'},
+        {'title': 'Curriculum journey', 'body': 'A balanced programme covering academics, communication, creativity, sports and life skills.'},
+        {'title': 'What parents can experience', 'body': 'Meet the academic team, understand classroom methods, review the curriculum and ask questions while the child completes the assessment.'},
+    ]}
 
 @api_router.get("/admissions-intelligence")
 async def admissions_intelligence(role: str = Depends(get_current)):
@@ -3578,7 +3977,30 @@ async def admissions_intelligence(role: str = Depends(get_current)):
     reasons = {}
     for lead in leads:
         if lead.get('stage') == 'Lost' and lead.get('lost_reason'): reasons[lead['lost_reason']] = reasons.get(lead['lost_reason'], 0) + 1
-    return {'funnel': funnel, 'stale': stale, 'lost_reasons': [{'reason': k, 'count': v} for k, v in reasons.items()], 'conversion': round((funnel[-1]['count'] / funnel[0]['count'] * 100), 1) if funnel[0]['count'] else 0}
+    total = len(leads)
+    today = datetime.utcnow().date().isoformat()
+    overdue = [lead for lead in leads if lead.get('next_follow_up') and lead.get('next_follow_up') < today and lead.get('stage') not in {'Admitted', 'Lost'}]
+    counsellors = {}
+    for lead in leads:
+        owner = lead.get('counsellor') or 'Unassigned'
+        row = counsellors.setdefault(owner, {'counsellor': owner, 'enquiries': 0, 'admitted': 0, 'overdue': 0})
+        row['enquiries'] += 1
+        if lead.get('stage') == 'Admitted': row['admitted'] += 1
+        if lead in overdue: row['overdue'] += 1
+    for row in counsellors.values():
+        row['conversion'] = round(row['admitted'] / row['enquiries'] * 100, 1) if row['enquiries'] else 0
+    assessed = [lead for lead in leads if lead.get('assessment_score') is not None]
+    passed = [lead for lead in assessed if lead.get('assessment_result') == 'Passed']
+    payment_pending = [lead for lead in leads if lead.get('parent_decision') == 'Confirmed' and not lead.get('admission_fee_paid') and lead.get('stage') != 'Lost']
+    return {
+        'funnel': funnel, 'stale': stale,
+        'lost_reasons': [{'reason': k, 'count': v} for k, v in sorted(reasons.items(), key=lambda item: item[1], reverse=True)],
+        'conversion': round((funnel[-1]['count'] / total * 100), 1) if total else 0,
+        'overdue_followups': len(overdue), 'counsellor_performance': sorted(counsellors.values(), key=lambda item: (-item['admitted'], item['counsellor'])),
+        'assessment': {'assessed': len(assessed), 'passed': len(passed), 'pass_rate': round(len(passed) / len(assessed) * 100, 1) if assessed else 0},
+        'payment_pending': len(payment_pending),
+        'bottlenecks': [{'stage': stage, 'count': len([lead for lead in leads if lead.get('stage') == stage])} for stage in ['Visit', 'Application', 'Selected']],
+    }
 
 @api_router.get("/collections-intelligence")
 async def collections_intelligence(role: str = Depends(get_current)):
@@ -3916,7 +4338,7 @@ async def save_academic_signal(payload: dict, role: str = Depends(get_current)):
     student_id = str(payload.get('student_id') or '').strip()
     if not student_id or not await db.students.find_one({'id': student_id}):
         raise HTTPException(status_code=422, detail='Choose a currently enrolled student.')
-    for field in ('attendance_percent', 'homework_percent', 'participation_percent'):
+    for field in ('attendance_percent', 'participation_percent'):
         try:
             value = float(payload.get(field))
         except (TypeError, ValueError):
@@ -3924,6 +4346,13 @@ async def save_academic_signal(payload: dict, role: str = Depends(get_current)):
         if value < 0 or value > 100:
             raise HTTPException(status_code=422, detail='Percentages must be between 0 and 100.')
         payload[field] = value
+    if payload.get('homework_percent') not in (None, ''):
+        try:
+            payload['homework_percent'] = float(payload['homework_percent'])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail='Homework percentage must be between 0 and 100.')
+        if payload['homework_percent'] < 0 or payload['homework_percent'] > 100:
+            raise HTTPException(status_code=422, detail='Homework percentage must be between 0 and 100.')
     payload['updated'] = datetime.utcnow().isoformat()
     await db.academic_signals.update_one({'student_id': payload['student_id']}, {'$set': payload}, upsert=True)
     await detect_academic_risks(create_cases=True)
@@ -3940,6 +4369,11 @@ async def student_health_dashboard(class_name: str = '', section: str = '', role
     students = [clean(x) for x in await db.students.find(query).sort('name', 1).to_list(1000)]
     student_ids = [student['id'] for student in students]
     signals = {item['student_id']: clean(item) for item in await db.academic_signals.find({'student_id': {'$in': student_ids}}).to_list(1000)} if student_ids else {}
+    interventions = [clean(item) for item in await db.interventions.find({'student_id': {'$in': student_ids}}).sort('deadline', 1).to_list(1000)] if student_ids else []
+    active_plan_by_student = {}
+    for plan in interventions:
+        if plan.get('status') != 'Completed' and plan.get('student_id') not in active_plan_by_student:
+            active_plan_by_student[plan.get('student_id')] = plan
     attendance_history = {}
     if student_ids:
         records = await db.attendance_records.find({'attendance_role': 'student', 'entity_id': {'$in': student_ids}}).to_list(10000)
@@ -3965,10 +4399,11 @@ async def student_health_dashboard(class_name: str = '', section: str = '', role
         maximum = mark_set.get('total_max') or (mark_set.get('max_written', 0) + mark_set.get('max_practical', 0)) or 100
         for row in mark_set.get('rows', []):
             name = (row.get('name') or '').strip().lower()
-            if not name or not maximum:
+            student_key = str(row.get('student_id') or '').strip() or (f'name:{name}' if name else '')
+            if not student_key or not maximum:
                 continue
             score = round((float(row.get('total', 0) or 0) / maximum) * 100, 1)
-            assessments[key]['by_student'].setdefault(name, []).append(score)
+            assessments[key]['by_student'].setdefault(student_key, []).append(score)
 
     subject_scores = []
     for subject, mark_set in sorted(latest_subject_sets.items()):
@@ -3977,12 +4412,22 @@ async def student_health_dashboard(class_name: str = '', section: str = '', role
         subject_scores.append({'subject': subject, 'average': round(sum(values) / len(values), 1) if values else None, 'assessment': mark_set.get('exam_title') or 'Assessment'})
 
     ordered_assessments = sorted(assessments.values(), key=lambda item: item.get('created', ''))
+    homework_rows = [clean(item) for item in await db.homework.find({
+        **({'class_name': class_name} if class_name else {}), **({'section': section} if section else {}),
+        'status': {'$ne': 'Archived'},
+    }).to_list(5000)]
+    homework_ids = [item.get('id') for item in homework_rows if item.get('id')]
+    completion_rows = await db.homework_completions.find({'student_id': {'$in': student_ids}, 'homework_id': {'$in': homework_ids}}).to_list(10000) if student_ids and homework_ids else []
+    completed_by_student = {}
+    for completion in completion_rows:
+        if completion.get('completed'):
+            completed_by_student.setdefault(completion.get('student_id'), set()).add(completion.get('homework_id'))
     rows = []
     for student in students:
         name = (student.get('name') or '').strip().lower()
         scores = []
         for assessment in ordered_assessments:
-            values = assessment['by_student'].get(name, [])
+            values = assessment['by_student'].get(student['id'], []) or assessment['by_student'].get(f'name:{name}', [])
             if values:
                 scores.append({'title': assessment['title'], 'score': round(sum(values) / len(values), 1)})
         latest = scores[-1]['score'] if scores else None
@@ -4000,15 +4445,24 @@ async def student_health_dashboard(class_name: str = '', section: str = '', role
         else:
             trend_status, trend_message = 'Stable', 'Performance is stable compared with the previous exam'
         signal = signals.get(student['id'], {})
+        active_plan = active_plan_by_student.get(student['id'])
         attendance = round((attendance_history[student['id']]['attended'] / attendance_history[student['id']]['total']) * 100, 1) if attendance_history.get(student['id'], {}).get('total') else signal.get('attendance_percent')
+        homework_percent = round(len(completed_by_student.get(student['id'], set())) / len(homework_ids) * 100, 1) if homework_ids else signal.get('homework_percent')
         rows.append({
             'student_id': student['id'], 'student_name': student.get('name', ''), 'roll': student.get('roll', ''),
             'attendance_percent': attendance, 'participation_percent': signal.get('participation_percent'),
+            'homework_percent': homework_percent,
+            'parent_phone': student.get('parent_phone') or student.get('phone') or student.get('guardian_phone') or '',
             'latest_score': latest, 'previous_score': previous, 'two_exams_ago_score': two_back,
             'change_from_previous': comparison,
             'change_from_two_exams': round(latest - two_back, 1) if latest is not None and two_back is not None else None,
             'trend_status': trend_status, 'trend_message': trend_message,
             'assessments_recorded': len(scores),
+            'active_plan': ({
+                'id': active_plan.get('id'), 'owner': active_plan.get('owner') or 'Unassigned',
+                'deadline': active_plan.get('deadline'), 'status': active_plan.get('status') or 'Open',
+                'signal': active_plan.get('signal') or active_plan.get('concern') or 'Student support',
+            } if active_plan else None),
         })
 
     attendance_values = [row['attendance_percent'] for row in rows if row['attendance_percent'] is not None]
@@ -4030,7 +4484,15 @@ async def student_health_dashboard(class_name: str = '', section: str = '', role
 async def list_curriculum_units(role: str = Depends(get_current)):
     today = datetime.utcnow().date().isoformat()
     units = [clean(x) for x in await db.curriculum_units.find().sort('target_date', 1).to_list(1000)]
+    allocations = [clean(x) for x in await db.teacher_allocations.find().to_list(1000)]
+    allocation_map = {(row.get('class_name'), row.get('section'), row.get('subject')): row for row in allocations}
     for unit in units:
+        allocation = allocation_map.get((unit.get('class_name'), unit.get('section'), unit.get('subject')))
+        if allocation and (unit.get('teacher_id') != allocation.get('teacher_id') or unit.get('teacher_name') != allocation.get('teacher_name')):
+            unit['teacher_id'] = allocation.get('teacher_id', '')
+            unit['teacher_name'] = allocation.get('teacher_name', '')
+            if unit.get('status') != 'Completed':
+                await db.curriculum_units.update_one({'id': unit['id']}, {'$set': {'teacher_id': unit['teacher_id'], 'teacher_name': unit['teacher_name']}})
         if unit.get('status') != 'Completed' and unit.get('target_date') and unit['target_date'] < today:
             unit['status'] = 'Overdue'
             if not unit.get('overdue_alerted'):
@@ -4072,12 +4534,47 @@ async def complete_curriculum_unit(unit_id: str, role: str = Depends(get_current
 
 @api_router.get("/interventions")
 async def list_interventions(role: str = Depends(get_current)):
-    return [clean(x) for x in await db.interventions.find().to_list(1000)]
+    rows = [clean(x) for x in await db.interventions.find().to_list(1000)]
+    today = datetime.utcnow().date()
+    for row in rows:
+        if row.get('status') == 'Completed' or not row.get('deadline'):
+            continue
+        try:
+            days_overdue = (today - datetime.strptime(row['deadline'], '%Y-%m-%d').date()).days
+        except ValueError:
+            continue
+        stage = 'Principal escalation' if days_overdue >= 7 else 'Coordinator escalation' if days_overdue >= 2 else 'Owner reminder' if days_overdue >= 0 else ''
+        row['days_overdue'] = max(0, days_overdue)
+        row['reminder_stage'] = stage
+        if stage and row.get('last_reminder_stage') != stage:
+            await db.interventions.update_one({'id': row['id']}, {'$set': {'last_reminder_stage': stage, 'last_reminder_at': datetime.utcnow().isoformat()}})
+            await add_event('warning', stage, f"{row.get('student_name', 'Student')}'s support plan review is {max(0, days_overdue)} day(s) overdue. Owner: {row.get('owner_name') or row.get('owner') or 'Unassigned'}.")
+    return rows
+
+@api_router.get("/intervention-owners")
+async def intervention_owners(role: str = Depends(get_current)):
+    teachers = [clean(x) for x in await db.teachers.find({'status': {'$ne': 'Inactive'}}).sort('name', 1).to_list(1000)]
+    staff = [clean(x) for x in await db.staff.find({'status': {'$ne': 'Inactive'}}).sort('name', 1).to_list(1000)]
+    return [{'id': row.get('id'), 'name': row.get('name'), 'role': row.get('designation') or row.get('access_role') or 'Teacher', 'type': 'Teacher'} for row in teachers] + [{'id': row.get('id'), 'name': row.get('name'), 'role': row.get('designation') or row.get('access_role') or 'Staff', 'type': 'Staff'} for row in staff]
 
 @api_router.post("/interventions")
 async def save_intervention(payload: dict, role: str = Depends(get_current)):
+    student = await db.students.find_one({'id': payload.get('student_id')})
+    if not student:
+        raise HTTPException(status_code=422, detail='Choose a currently enrolled student.')
+    signal = str(payload.get('signal') or '').strip()
+    duplicate = await db.interventions.find_one({'student_id': payload.get('student_id'), 'signal': signal, 'status': {'$ne': 'Completed'}})
+    if duplicate:
+        raise HTTPException(status_code=409, detail='An active support plan already exists for this student and signal. Open and update that plan instead.')
+    owner_id = str(payload.get('owner_id') or '').strip()
+    owner = (await db.teachers.find_one({'id': owner_id}) or await db.staff.find_one({'id': owner_id})) if owner_id else None
+    if not owner:
+        raise HTTPException(status_code=422, detail='Assign this plan to a specific active teacher or staff member.')
+    payload['owner_name'] = owner.get('name', '')
+    payload['owner'] = owner.get('name', '')
     payload.setdefault('id', str(uuid.uuid4())); payload.setdefault('status', 'Open'); payload.setdefault('created', datetime.utcnow().isoformat())
     await db.interventions.insert_one(dict(payload))
+    await add_event('info', 'Student support plan assigned', f"{payload['owner_name']} is responsible for {student.get('name')}'s {signal or 'support'} plan by {payload.get('deadline') or 'the review date'}.")
     return payload
 
 @api_router.put("/interventions/{intervention_id}")
@@ -4085,13 +4582,34 @@ async def update_intervention(intervention_id: str, payload: dict, role: str = D
     existing = await db.interventions.find_one({'id': intervention_id})
     if not existing:
         raise HTTPException(status_code=404, detail='Academic support plan not found.')
-    allowed = {'status', 'owner', 'deadline', 'goal', 'recommended_action', 'parent_action', 'review_notes', 'outcome'}
+    allowed = {'status', 'owner_id', 'owner_name', 'owner', 'deadline', 'goal', 'recommended_action', 'parent_action', 'review_notes', 'outcome', 'baseline_value', 'review_value', 'review_result', 'next_step', 'next_review_date'}
     changes = {key: value for key, value in payload.items() if key in allowed}
+    if changes.get('owner_id'):
+        assigned = await db.teachers.find_one({'id': changes['owner_id'], 'status': {'$ne': 'Inactive'}}) or await db.staff.find_one({'id': changes['owner_id'], 'status': {'$ne': 'Inactive'}})
+        if not assigned:
+            raise HTTPException(status_code=422, detail='Choose an active teacher or staff member as the plan owner.')
+        changes['owner_name'] = assigned.get('name', '')
+        changes['owner'] = assigned.get('name', '')
     changes['updated'] = datetime.utcnow().isoformat()
     if changes.get('status') == 'Completed':
         changes['completed_at'] = datetime.utcnow().isoformat()
     await db.interventions.update_one({'id': intervention_id}, {'$set': changes})
     return clean(await db.interventions.find_one({'id': intervention_id}))
+
+@api_router.post("/interventions/{intervention_id}/parent-contact")
+async def record_intervention_parent_contact(intervention_id: str, payload: dict, role: str = Depends(get_current)):
+    plan = await db.interventions.find_one({'id': intervention_id})
+    if not plan:
+        raise HTTPException(status_code=404, detail='Academic support plan not found.')
+    student = await db.students.find_one({'id': plan.get('student_id')}) or {}
+    entry = {'id': f"IPC-{uuid.uuid4().hex[:10].upper()}", 'intervention_id': intervention_id, 'student_id': plan.get('student_id'), 'student_name': plan.get('student_name'), 'parent_phone': student.get('parent_phone') or student.get('mobile') or student.get('phone') or '', 'channel': str(payload.get('channel') or 'Phone'), 'status': str(payload.get('status') or 'Contacted'), 'note': str(payload.get('note') or '').strip(), 'created': datetime.utcnow().isoformat()}
+    await db.intervention_parent_contacts.insert_one(entry)
+    await db.interventions.update_one({'id': intervention_id}, {'$set': {'last_parent_contact': entry['created'], 'parent_contact_status': entry['status']}})
+    return clean(entry)
+
+@api_router.get("/interventions/{intervention_id}/parent-contacts")
+async def intervention_parent_contacts(intervention_id: str, role: str = Depends(get_current)):
+    return [clean(x) for x in await db.intervention_parent_contacts.find({'intervention_id': intervention_id}).sort('created', -1).to_list(200)]
 
 # ---------------- Parent app foundation ----------------
 # These routes deliberately live beside the admin API while retaining a separate,

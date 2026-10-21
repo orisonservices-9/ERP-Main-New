@@ -5,6 +5,7 @@ import { ShieldOff } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import ViewStudents from './pages/ViewStudents';
 import StudentProfile from './pages/StudentProfile';
@@ -15,9 +16,9 @@ import AddMarks from './pages/AddMarks';
 import LeaveManagement from './pages/LeaveManagement';
 import { PromoteStudent, TransferStudent } from './pages/modules/StudentOps';
 import { AttendanceManagement } from './pages/modules/AcademicsAttendance';
-import { AcademicActionCenter, CurriculumSyllabus, StudentHealthSignals, AcademicInterventions } from './pages/modules/AcademicImprovement';
+import { AcademicActionCenter, CurriculumSyllabus, StudentHealthSignals, AcademicInterventions, ClassroomObservations } from './pages/modules/AcademicImprovement';
 import AcademicStructure from './pages/modules/AcademicStructure';
-import { AdmissionsCRM, CollectionIntelligence } from './pages/modules/BusinessIntelligence';
+import { AdmissionsCRM, CollectionIntelligence, PublicAdmissionExperience } from './pages/modules/BusinessIntelligence';
 import ManagementActionCenter from './pages/modules/ManagementActionCenter';
 import { AddStaff, ViewStaff } from './pages/modules/StaffDirectory';
 import { AddTeacher, ViewTeachers, AssignTeachers, ViewAllocations } from './pages/modules/TeacherManagement';
@@ -47,7 +48,7 @@ const AccessDenied = () => (
 
 const Protected = ({ requiredKey, children }) => {
   const { auth } = useAuth();
-  if (!auth) return <Navigate to="/" replace />;
+  if (!auth) return <Navigate to="/login" replace />;
   const menu = auth.role === 'academic_coordinator'
     ? ['dashboard', 'academics', 'notifications']
     : auth.menu; // null = admin (all)
@@ -60,8 +61,10 @@ const P = (el, key) => <Protected requiredKey={key}>{el}</Protected>;
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<Login />} />
+      <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
       <Route path="/visitor-pass/:token" element={<PublicVisitorPass />} />
+      <Route path="/admission-experience/:token" element={<PublicAdmissionExperience />} />
       <Route path="/dashboard" element={P(<Dashboard />, 'dashboard')} />
       <Route path="/management/action-center" element={P(<ManagementActionCenter />, 'management')} />
 
@@ -71,7 +74,10 @@ function AppRoutes() {
       <Route path="/students/profile" element={P(<StudentProfile />, 'student')} />
       <Route path="/students/promote" element={P(<PromoteStudent />, 'student')} />
       <Route path="/students/transfer" element={P(<TransferStudent />, 'student')} />
-      <Route path="/admissions" element={P(<AdmissionsCRM />, 'student')} />
+      <Route path="/admissions" element={P(<AdmissionsCRM mode="dashboard" />, 'admissions')} />
+      <Route path="/admissions/enquiries" element={P(<AdmissionsCRM mode="enquiries" />, 'admissions')} />
+      <Route path="/admissions/applications" element={P(<AdmissionsCRM mode="applications" />, 'admissions')} />
+      <Route path="/admissions/reports" element={P(<AdmissionsCRM mode="reports" />, 'admissions')} />
 
       <Route path="/exams/create" element={P(<CreateExam />, 'exams')} />
       <Route path="/exams/view" element={P(<ViewExam />, 'exams')} />
@@ -87,7 +93,9 @@ function AppRoutes() {
       <Route path="/academics/action-center" element={P(<AcademicActionCenter />, 'academics')} />
       <Route path="/academics/syllabus" element={P(<CurriculumSyllabus />, 'academics')} />
       <Route path="/academics/student-health" element={P(<StudentHealthSignals />, 'academics')} />
-      <Route path="/academics/interventions" element={P(<AcademicInterventions />, 'academics')} />
+      <Route path="/academics/interventions" element={P(<Navigate to="/academics/support-plans" replace />, 'academics')} />
+      <Route path="/academics/support-plans" element={P(<AcademicInterventions />, 'academics')} />
+      <Route path="/academics/classroom-observations" element={P(<ClassroomObservations />, 'academics')} />
       <Route path="/attendance" element={P(<Navigate to="/attendance/add" replace />, 'attendance')} />
       <Route path="/attendance/add" element={P(<AttendanceManagement />, 'attendance')} />
       <Route path="/attendance/view" element={P(<AttendanceManagement />, 'attendance')} />
@@ -98,8 +106,8 @@ function AppRoutes() {
       <Route path="/teachers/assign" element={P(<AssignTeachers />, 'teachers')} />
       <Route path="/teachers/allocations" element={P(<ViewAllocations />, 'teachers')} />
       <Route path="/teaching/setup" element={P(<Navigate to="/teachers/assign" replace />, 'teachers')} />
-      <Route path="/teaching/observations" element={P(<Navigate to="/academics/interventions" replace />, 'academics')} />
-      <Route path="/teaching/performance" element={P(<Navigate to="/academics/interventions" replace />, 'academics')} />
+      <Route path="/teaching/observations" element={P(<Navigate to="/academics/classroom-observations" replace />, 'academics')} />
+      <Route path="/teaching/performance" element={P(<Navigate to="/academics/classroom-observations" replace />, 'academics')} />
       <Route path="/staff" element={P(<Navigate to="/staff/view" replace />, 'staff')} />
       <Route path="/staff/add" element={P(<AddStaff />, 'staff')} />
       <Route path="/staff/view" element={P(<ViewStaff />, 'staff')} />
