@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowRight, BellRing, Building2, CalendarClock, Check, CircleDollarSign, ClipboardList, LayoutGrid, List, Mail, MapPin, MessageCircle, MessageSquare, Phone, PhoneCall,
-  Plus, Presentation, Route as RouteIcon, Search, Trash2, Trophy, Users, Camera,
+  Plus, Presentation, Route as RouteIcon, Search, Trash2, Trophy, Users, Camera, ImagePlus, LocateFixed,
 } from 'lucide-react';
-import { LocationCard, PhotosCard, RoutesView } from './PlatformRoutes';
+import { LocationCard, PhotosCard, RoutesView, TripHomeBar } from './PlatformRoutes';
 import pApi, { errText } from './platformApi';
 import useFetch from './useFetch';
 import { usePlatform } from './platformContext';
@@ -128,6 +128,10 @@ const AddLeadModal = ({ options, salespeople, ownerView, onClose }) => {
   const [lines, setLines] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [typed, setTyped] = useState('');
+  useEffect(() => { const t = setTimeout(() => setTyped(f.school_name.trim()), 250); return () => clearTimeout(t); }, [f.school_name]);
+  const { data: found } = useFetch('/leads/lookup', { q: typed.length >= 2 ? typed : '~~' });
+  const matches = typed.length >= 2 && Array.isArray(found) ? found : [];
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
   const setContact = (k) => (e) => setC((s) => ({ ...s, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   const submit = async (e) => {
@@ -146,7 +150,27 @@ const AddLeadModal = ({ options, salespeople, ownerView, onClose }) => {
     <Modal title="Add a school you are talking to" onClose={onClose} wide>
       <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
         {section('The school')}
-        <Field label="School name"><input autoFocus value={f.school_name} onChange={set('school_name')} className={inputCls} /></Field>
+        <div className="sm:col-span-2">
+          <Field label="School name" hint="Start typing. If the school is already saved, pick it below instead of adding it again.">
+            <input autoFocus value={f.school_name} onChange={set('school_name')} className={inputCls} autoComplete="off" />
+          </Field>
+          {matches.length > 0 && (
+            <div className="mt-2 rounded-xl border border-[#E2DDD1] bg-[#FAF8F3] p-2" role="list" aria-label="Schools already saved">
+              <p className="px-2 pb-1 pt-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-[#6B7080]">Already saved. Tap one to log a new visit</p>
+              {matches.map((m) => (m.id ? (
+                <button key={m.id} type="button" role="listitem" onClick={() => { onClose(); navigate(`/platform/sales/${m.id}`); }} className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left hover:bg-white">
+                  <span className="min-w-0"><b className="block truncate text-[14px] text-[#1F2433]">{m.school_name}</b><span className="text-[12.5px] text-[#6B7080]">{[m.city, m.stage, `${m.visits} ${m.visits === 1 ? 'visit' : 'visits'}`].filter(Boolean).join(' · ')}{m.next_follow_up ? ` · follow-up ${fmtDate(m.next_follow_up)}` : ''}</span></span>
+                  <span className="shrink-0 text-[13px] font-medium text-[#2E2A6E]">Open →</span>
+                </button>
+              ) : (
+                <div key={`${m.school_name}${m.owner_name}`} role="listitem" className="flex items-center justify-between gap-3 px-2 py-2 opacity-80">
+                  <span className="min-w-0"><b className="block truncate text-[14px] text-[#1F2433]">{m.school_name}</b><span className="text-[12.5px] text-[#6B7080]">{[m.city, m.stage].filter(Boolean).join(' · ')}</span></span>
+                  <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-0.5 text-[12px] font-medium text-amber-800">Already with {m.owner_name}</span>
+                </div>
+              )))}
+            </div>
+          )}
+        </div>
         <Field label="City / area"><input value={f.city} onChange={set('city')} className={inputCls} /></Field>
         <Field label="State"><input value={f.state} onChange={set('state')} className={inputCls} /></Field>
         <Field label="Board"><input value={f.board} onChange={set('board')} placeholder="CBSE, ICSE, State…" className={inputCls} /></Field>
@@ -303,10 +327,12 @@ export const SalesPipeline = () => {
           <div className="flex rounded-lg border border-[#DAD6CC] bg-white p-1" role="group" aria-label="View">
             {[['board', LayoutGrid, 'Board'], ['list', List, 'List'], ['routes', RouteIcon, 'Routes']].map(([key, Icon, label]) => <button key={key} type="button" onClick={() => chooseView(key)} aria-pressed={view === key} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium ${view === key ? 'bg-[#2E2A6E] text-white' : 'text-[#5B6070] hover:bg-[#F4F1EA]'}`}><Icon className="h-4 w-4" />{label}</button>)}
           </div>
-          <Btn onClick={() => setAdding(true)}><Plus className="h-4 w-4" />Add a school</Btn>
+          {!ownerView && <Btn onClick={() => setAdding(true)}><Plus className="h-4 w-4" />Add a school</Btn>}
         </div>
       </div>
 
+      {view !== 'routes' && !ownerView && <TripHomeBar />}
+      {view !== 'routes' && <SalesTargets ownerView={ownerView} />}
       {view === 'routes' ? <RoutesView ownerView={ownerView} salespeople={data.salespeople} /> : (<>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile icon={BellRing} label="Follow-ups due" value={num(due)} accent={sum.follow_ups.overdue ? '#DC2626' : due ? '#F59E0B' : '#10B981'} hint={`${sum.follow_ups.next_7_days} more in the next 7 days`} />
@@ -330,9 +356,9 @@ export const SalesPipeline = () => {
               {sum.by_owner.map((o) => (
                 <button key={o.owner_id} type="button" aria-pressed={f.owner_id === o.owner_id} onClick={() => setF((s) => ({ ...s, owner_id: s.owner_id === o.owner_id ? '' : o.owner_id }))}
                   className={`rounded-xl border p-4 text-left transition ${f.owner_id === o.owner_id ? 'border-[#3F3A8C] bg-[#F6F4FC]' : 'border-[#E2DDD1] hover:bg-[#FAF8F3]'}`}>
-                  <div className="flex items-center gap-3"><Avatar name={o.name} size={38} /><div className="min-w-0 flex-1"><p className="truncate text-[14.5px] font-semibold text-[#1F2433]">{o.name}</p><p className="text-[12.5px] text-[#6B7080]">{o.leads} schools · {o.open} open</p></div>{o.overdue > 0 && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11.5px] font-semibold text-red-700">{o.overdue} overdue</span>}</div>
-                  <div className="mt-3.5 grid grid-cols-5 gap-2 text-center">
-                    {[['Visits', o.visits_30d], ['Proposals', o.proposals], ['Won', o.won_30d], ['Pipeline', short(o.pipeline_value)], ['Km 30d', o.km_30d ?? 0]].map(([k, v]) => <div key={k} className="rounded-lg bg-[#F8F5EE] py-1.5"><p className="text-[14px] font-semibold text-[#1F2433]">{v}</p><p className="text-[9.5px] uppercase text-[#6B7080]">{k}</p></div>)}
+                  <div className="flex items-center gap-3"><Avatar name={o.name} size={38} /><div className="min-w-0 flex-1"><p className="truncate text-[14.5px] font-semibold text-[#1F2433]">{o.name}</p><p className="text-[12.5px] text-[#6B7080]">{o.leads} {o.leads === 1 ? 'school' : 'schools'} · {o.open} open</p></div>{o.overdue > 0 && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11.5px] font-semibold text-red-700">{o.overdue} overdue</span>}</div>
+                  <div className="mt-3.5 grid grid-cols-3 gap-2 text-center">
+                    {[['Visits (30 days)', o.visits_30d], ['Proposals', o.proposals], ['Won (30 days)', o.won_30d], ['Pipeline', short(o.pipeline_value)], ['Km (30 days)', o.km_30d ?? 0], ['Overdue', o.overdue]].map(([k, v]) => <div key={k} className="rounded-lg bg-[#F8F5EE] px-1 py-2"><p className="whitespace-nowrap text-[15px] font-semibold text-[#1F2433]">{v}</p><p className="mt-0.5 text-[10.5px] leading-tight text-[#6B7080]">{k}</p></div>)}
                   </div>
                 </button>
               ))}
@@ -352,13 +378,13 @@ export const SalesPipeline = () => {
       </div>
 
       {view === 'board' ? (
-        data.items.length === 0 ? <div className="rounded-2xl border border-[#E2DDD1] bg-white"><Empty>{sum.total === 0 ? 'No schools yet. Add the first school you visit.' : 'No school matches these filters.'}</Empty></div>
+        data.items.length === 0 ? <div className="rounded-2xl border border-[#E2DDD1] bg-white"><Empty>{sum.total === 0 ? (ownerView ? 'No schools yet. Your salespeople add the schools they visit and they appear here.' : 'No schools yet. Add the first school you visit.') : 'No school matches these filters.'}</Empty></div>
           : <Board data={data} today={today} ownerView={ownerView} onMove={move} />
       ) : (<>
         <div className="mb-3 flex flex-wrap gap-2">
           {tabs.map(([key, label, count]) => <button key={key} type="button" onClick={() => setStage(key)} aria-pressed={stage === key} className={`rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition ${stage === key ? 'border-[#2E2A6E] bg-[#2E2A6E] text-white' : 'border-[#DAD6CC] bg-white text-[#2B3040] hover:bg-[#F4F1EA]'}`}>{label} <span className={stage === key ? 'text-white/70' : 'text-[#6B7080]'}>{num(count)}</span></button>)}
         </div>
-        {data.items.length === 0 ? <div className="rounded-2xl border border-[#E2DDD1] bg-white"><Empty>{sum.total === 0 ? 'No schools yet. Add the first school you visit.' : 'No school matches these filters.'}</Empty></div> : (<>
+        {data.items.length === 0 ? <div className="rounded-2xl border border-[#E2DDD1] bg-white"><Empty>{sum.total === 0 ? (ownerView ? 'No schools yet. Your salespeople add the schools they visit and they appear here.' : 'No schools yet. Add the first school you visit.') : 'No school matches these filters.'}</Empty></div> : (<>
           <TableWrap>
             <THead cols={['School', 'Person met', 'Stage', 'Pitched', 'Quote (before GST)', 'Follow up', 'Last contact', ...(ownerView ? ['Salesperson'] : [])]} />
             <tbody>
@@ -416,6 +442,60 @@ export const SalesPipeline = () => {
 
       {adding && <AddLeadModal options={data.options} salespeople={data.salespeople} ownerView={ownerView} onClose={() => setAdding(false)} />}
     </>
+  );
+};
+
+
+// ---------------------------------------------------------------- monthly targets
+const Bar = ({ label, value, target, money }) => {
+  const pct = target ? Math.min(100, Math.round((value / target) * 100)) : 0;
+  const show = (v) => (money ? short(v) : num(v));
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between text-[13px]"><span className="text-[#5B6070]">{label}</span><span className="font-medium text-[#1F2433]">{show(value)}{target ? <span className="font-normal text-[#8A8F9C]"> of {show(target)}</span> : <span className="font-normal text-[#8A8F9C]"> (no target set)</span>}</span></div>
+      <div className="h-2 overflow-hidden rounded-full bg-[#F0ECE2]" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={label}><div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct >= 100 ? '#10B981' : pct >= 50 ? '#3F3A8C' : '#F59E0B' }} /></div>
+    </div>
+  );
+};
+
+const TargetModal = ({ person, onClose, onDone }) => {
+  const [f, setF] = useState({ visits: String(person.target_visits || ''), won_value: String(person.target_won_value || '') });
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault(); setBusy(true);
+    try { await pApi.put('/targets', { owner_id: person.owner_id, visits: Number(f.visits || 0), won_value: Number(f.won_value || 0) }); notify('Targets saved', 'success'); onDone(); onClose(); } catch (err) { notify(errText(err), 'error'); } finally { setBusy(false); }
+  };
+  return (
+    <Modal title={`Targets for ${person.name}`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <p className="text-[13.5px] text-[#5B6070]">For this month. {person.name.split(' ')[0]} sees these on their own Sales page.</p>
+        <Field label="School visits"><input type="number" min="0" value={f.visits} onChange={(e) => setF({ ...f, visits: e.target.value })} className={inputCls} /></Field>
+        <Field label="Value of schools won (₹, before GST)"><input type="number" min="0" value={f.won_value} onChange={(e) => setF({ ...f, won_value: e.target.value })} className={inputCls} /></Field>
+        <div className="flex justify-end gap-2"><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn type="submit" busy={busy}>Save targets</Btn></div>
+      </form>
+    </Modal>
+  );
+};
+
+const SalesTargets = ({ ownerView }) => {
+  const { data, reload } = useFetch('/targets');
+  const [editing, setEditing] = useState(null);
+  if (!data || data.items.length === 0) return null;
+  const label = new Date(`${data.month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  return (
+    <section className="mb-6 rounded-2xl border border-[#E2DDD1] bg-white p-5" aria-label="Targets this month">
+      <h2 style={serif} className="mb-4 text-[19px] font-medium text-[#1F2433]">{ownerView ? `Targets: ${label}` : `Your targets: ${label}`}</h2>
+      <div className={`grid gap-5 ${ownerView ? 'md:grid-cols-2' : ''}`}>
+        {data.items.map((p) => (
+          <div key={p.owner_id} className="space-y-3 rounded-xl bg-[#FAF8F3] p-4">
+            <div className="flex items-center justify-between"><p className="font-semibold text-[#1F2433]">{ownerView ? p.name : 'This month'}</p>{ownerView && <button type="button" onClick={() => setEditing(p)} className="text-[13px] font-medium text-[#3F3A8C] hover:underline">{p.target_visits || p.target_won_value ? 'Change targets' : 'Set targets'}</button>}</div>
+            <Bar label="School visits" value={p.visits} target={p.target_visits} />
+            <Bar label="Schools won (before GST)" value={p.won_value} target={p.target_won_value} money />
+            <p className="text-[12px] text-[#8A8F9C]">{p.days_on_road} {p.days_on_road === 1 ? 'day' : 'days'} on the road · {p.new_schools} new {p.new_schools === 1 ? 'school' : 'schools'} added</p>
+          </div>))}
+      </div>
+      {editing && <TargetModal person={editing} onClose={() => setEditing(null)} onDone={reload} />}
+    </section>
   );
 };
 
@@ -534,7 +614,7 @@ export const LeadDetail = () => {
 
       <div className="mt-5 grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
-          <LogActivity lead={lead} options={options} onSaved={reload} />
+          {!ownerView && <LogActivity lead={lead} options={options} onSaved={reload} />}
           <LocationCard lead={lead} save={save} />
           <PhotosCard lead={lead} onChanged={reload} />
           <Timeline lead={lead} />
@@ -580,24 +660,64 @@ const FollowUpBanner = ({ lead, today, save }) => {
   );
 };
 
+const PHYSICAL = ['Visit', 'Meeting', 'Demo'];
 const LogActivity = ({ lead, options, onSaved }) => {
-  const blank = { type: 'Visit', date: iso(new Date()), met_name: '', met_designation: '', summary: '', outcome: '', distance_km: '', next_follow_up: '', follow_up_note: '' };
-  const [f, setF] = useState(blank);
+  const { user } = usePlatform();
+  const blank = { type: 'Visit', date: iso(new Date()), met_name: '', met_designation: '', summary: '', outcome: '', distance_km: '', next_follow_up: '', follow_up_note: '', location: '' };
+  const draftKey = `orison_visit_draft_${lead.id}`;
+  const [f, setF] = useState(() => { try { const d = JSON.parse(localStorage.getItem(draftKey) || 'null'); return d ? { ...blank, ...d, date: d.date || blank.date } : blank; } catch { return blank; } });
+  const [photos, setPhotos] = useState([]);
+  const [restored, setRestored] = useState(() => { try { return !!localStorage.getItem(draftKey); } catch { return false; } });
+  useEffect(() => { try { const empty = !f.summary && !f.met_name && !f.distance_km && !f.next_follow_up && !f.follow_up_note && !f.location && !f.outcome; if (empty) localStorage.removeItem(draftKey); else localStorage.setItem(draftKey, JSON.stringify(f)); } catch { /* ignore */ } }, [f, draftKey]);
   const [busy, setBusy] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const camera = useRef(null); const gallery = useRef(null);
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
+  const physical = PHYSICAL.includes(f.type);
+  const closed = lead.stage === 'Won' || lead.stage === 'Lost';
+  const hasPin = lead.latitude !== null && lead.latitude !== undefined;
+  const { data: day } = useFetch('/leads/routes', { from: f.date, to: f.date, owner_id: user.id, n: lead.activities.length });
+  const todays = (day?.days || []).find((d) => d.date === f.date && d.owner_id === user.id);
+  const last = todays?.stops?.length ? todays.stops[todays.stops.length - 1] : null;
+  const addPhotos = (list) => { const picked = Array.from(list || []); setPhotos((p) => [...p, ...picked].slice(0, 5)); if (camera.current) camera.current.value = ''; if (gallery.current) gallery.current.value = ''; };
+  const useMine = () => {
+    if (!navigator.geolocation) return notify('This browser cannot find your location. Paste a Google Maps link instead.', 'error');
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { setF((s) => ({ ...s, location: `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}` })); setLocating(false); },
+      () => { setLocating(false); notify('Could not get your location. Allow location for this site, or paste a Google Maps link.', 'error'); },
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
+  };
   const submit = async (e) => {
     e.preventDefault();
     if (f.summary.trim().length < 3) return notify('Write what happened.', 'error');
+    if (!closed && !f.next_follow_up) return notify('Choose the next follow-up date.', 'error');
+    if (!closed && f.follow_up_note.trim().length < 3) return notify('Write what to do at the follow-up.', 'error');
+    if (physical) {
+      if (!hasPin && !f.location.trim()) return notify("Add the school's location: paste a Google Maps link or use your current location.", 'error');
+      if (f.distance_km === '' || Number(f.distance_km) < 0) return notify('Enter the km travelled to reach this school.', 'error');
+      if (photos.length === 0) return notify('Add a photo taken at the school.', 'error');
+    }
     setBusy(true);
     try {
-      const body = { ...f }; if (!body.next_follow_up) { delete body.next_follow_up; delete body.follow_up_note; }
-      if (body.distance_km === '' || !['Visit', 'Meeting', 'Demo'].includes(body.type)) delete body.distance_km; else body.distance_km = Number(body.distance_km);
+      if (physical && !hasPin) await pApi.put(`/leads/${lead.id}`, { location_url: f.location.trim() });
+      if (physical) for (const file of photos) { const form = new FormData(); form.append('file', file); form.append('caption', ''); await pApi.post(`/leads/${lead.id}/photos`, form); }
+      const body = { type: f.type, date: f.date, met_name: f.met_name, met_designation: f.met_designation, summary: f.summary, outcome: f.outcome };
+      if (f.next_follow_up) { body.next_follow_up = f.next_follow_up; body.follow_up_note = f.follow_up_note; }
+      if (physical) {
+        body.distance_km = Number(f.distance_km);
+        const pos = await new Promise((resolve) => { if (!navigator.geolocation) return resolve(null); navigator.geolocation.getCurrentPosition((p) => resolve(p.coords), () => resolve(null), { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }); });
+        if (pos) { body.device_latitude = pos.latitude; body.device_longitude = pos.longitude; }
+      }
       await pApi.post(`/leads/${lead.id}/activities`, body);
-      notify('Saved to the history', 'success'); setF({ ...blank, date: f.date }); onSaved();
-    } catch (err) { notify(errText(err), 'error'); } finally { setBusy(false); }
+      notify('Saved to the history', 'success'); setF({ ...blank, date: f.date }); setPhotos([]); setRestored(false); try { localStorage.removeItem(draftKey); } catch { /* ignore */ } onSaved();
+    } catch (err) { notify(errText(err), 'error'); onSaved(); } finally { setBusy(false); }
   };
+  const req = <span className="text-red-600" aria-hidden="true"> *</span>;
   return (
     <Card title="Log a visit, call or demo">
+      {restored && <p className="mb-3 flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">Your unsaved notes from earlier were restored. <button type="button" onClick={() => { setF(blank); setRestored(false); }} className="font-medium underline">Start fresh</button></p>}
       <form onSubmit={submit} className="space-y-4">
         <div className="flex flex-wrap gap-2" role="group" aria-label="What was it">
           {(options?.activity_types || ['Visit']).map((t) => { const Icon = ACTIVITY_ICON[t] || MessageSquare; const on = f.type === t; return (
@@ -609,12 +729,38 @@ const LogActivity = ({ lead, options, onSaved }) => {
           <Field label="Who you met"><input value={f.met_name} onChange={set('met_name')} placeholder="Name" className={inputCls} /></Field>
           <Field label="Their role"><input value={f.met_designation} onChange={set('met_designation')} placeholder="Principal, Chairman…" className={inputCls} /></Field>
         </div>
-        {['Visit', 'Meeting', 'Demo'].includes(f.type) && <Field label="How far from the last school? (km, optional)" hint="From the previous school you visited today, or from where you started. Leave empty and it is worked out from the map pins."><input type="number" min="0" max="2000" step="0.1" value={f.distance_km} onChange={set('distance_km')} className={inputCls} placeholder="e.g. 12.5" /></Field>}
-        <Field label="What happened"><textarea value={f.summary} onChange={set('summary')} rows={3} className={`${inputCls} h-auto py-2`} placeholder="What you showed, what they asked, what they said about price…" /></Field>
+        <Field label={<>What happened{req}</>}><textarea value={f.summary} onChange={set('summary')} rows={3} className={`${inputCls} h-auto py-2`} placeholder="What you showed, what they asked, what they said about price…" /></Field>
         <Field label="Result or next step (optional)"><input value={f.outcome} onChange={set('outcome')} className={inputCls} placeholder="e.g. Wants a demo for the trustees" /></Field>
+
+        {physical && (
+          <div className="space-y-3.5 rounded-xl border border-[#E2DDD1] bg-[#FAF8F3] p-4">
+            <p className="text-[12px] font-semibold uppercase tracking-wide text-[#6B7080]">Proof of the visit and travel</p>
+            <p className="text-[12.5px] text-[#6B7080]">When you save, the app checks that your phone is at the school, so please allow location for this site.</p>
+            <Field label={<>Km travelled to reach this school{req}</>} hint={last ? `Your last stop on this day was ${last.school_name}. Enter the km from there to this school. Visiting a school you went to before? Same rule: km from your previous stop.` : 'This is your first stop of the day. Enter the km from where you started (home or office) to this school. Visiting a school you went to before? Same rule.'}>
+              <input type="number" min="0" max="2000" step="0.1" value={f.distance_km} onChange={set('distance_km')} className={inputCls} placeholder="e.g. 12.5" />
+            </Field>
+            {!hasPin && (
+              <Field label={<>School location{req}</>} hint="Paste the full Google Maps link, or stand at the school and tap the button.">
+                <div className="flex gap-2"><input value={f.location} onChange={set('location')} placeholder="https://www.google.com/maps/…  or  17.385, 78.4867" className={inputCls} /><Btn variant="ghost" onClick={useMine} busy={locating}><LocateFixed className="h-4 w-4" />Use mine</Btn></div>
+              </Field>
+            )}
+            {hasPin && <p className="flex items-center gap-1.5 text-[13px] text-emerald-700"><MapPin className="h-3.5 w-3.5" />School location is saved.</p>}
+            <div>
+              <p className="mb-1.5 text-[13px] font-medium text-[#2B3040]">Photo taken at the school{req}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Btn variant="ghost" onClick={() => camera.current?.click()}><Camera className="h-4 w-4" />Take a photo</Btn>
+                <Btn variant="ghost" onClick={() => gallery.current?.click()}><ImagePlus className="h-4 w-4" />Choose photo</Btn>
+                <input ref={camera} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => addPhotos(e.target.files)} data-testid="visit-camera" />
+                <input ref={gallery} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e) => addPhotos(e.target.files)} data-testid="visit-gallery" />
+                {photos.map((p, i) => <span key={`${p.name}${i}`} className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[12.5px] text-[#2B3040] ring-1 ring-[#DAD6CC]">{p.name.slice(0, 22)}<button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPhotos((l) => l.filter((_, k) => k !== i))} className="text-[#B91C1C]">×</button></span>)}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-3 rounded-xl bg-[#FAF8F3] p-3.5 sm:grid-cols-2">
-          <Field label="Follow up on (optional)"><input type="date" value={f.next_follow_up} onChange={set('next_follow_up')} className={inputCls} /></Field>
-          <Field label="What to do then"><input value={f.follow_up_note} onChange={set('follow_up_note')} className={inputCls} placeholder="e.g. Call about the demo date" /></Field>
+          <Field label={<>Follow up on{closed ? ' (optional)' : req}</>}><input type="date" value={f.next_follow_up} onChange={set('next_follow_up')} className={inputCls} /></Field>
+          <Field label={<>What to do then{closed ? '' : req}</>}><input value={f.follow_up_note} onChange={set('follow_up_note')} className={inputCls} placeholder="e.g. Call about the demo date" /></Field>
         </div>
         <Btn type="submit" busy={busy}><ClipboardList className="h-4 w-4" />Save to history</Btn>
       </form>
@@ -638,6 +784,7 @@ const Timeline = ({ lead }) => (
                   <p className="mt-1.5 whitespace-pre-wrap text-[14px] leading-6 text-[#1F2433]">{a.summary}</p>
                   {a.outcome && <p className="mt-1.5 text-[13.5px] text-[#2E2A6E]"><b>Result:</b> {a.outcome}</p>}
                   {a.distance_km != null && <p className="mt-1.5 text-[13px] text-[#5B6070]">Travelled <b>{a.distance_km} km</b> to get here</p>}
+                  {a.proof && <p className="mt-1.5"><span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[12px] font-semibold ${a.proof.status === 'At the school' ? 'bg-emerald-50 text-emerald-700' : a.proof.status === 'Away from the school' ? 'bg-red-50 text-red-700' : 'bg-[#F4F1EA] text-[#6B7080]'}`}><MapPin className="h-3 w-3" />{a.proof.status === 'At the school' ? 'Confirmed at the school' : a.proof.status === 'Away from the school' ? `Logged ${(Math.min(...[a.proof.phone_m, a.proof.photo_m].filter((x) => x != null)) / 1000).toFixed(1)} km from the school` : 'Location not checked'}</span></p>}
                   <p className="mt-2 text-[12px] text-[#8A8F9C]">Logged by {a.by} · {fmtDateTime(a.at)}</p>
                 </div>
               )}

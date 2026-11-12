@@ -8,7 +8,7 @@ import { usePlatform } from './platformContext';
 const Frame = ({ title, subtitle, children }) => (
   <div className="flex min-h-screen items-center justify-center bg-[#F4F1EA] px-4 py-10 text-[#1F2433]">
     <div className="w-full max-w-[440px]">
-      <p style={serif} className="text-center text-[34px] text-[#2E2A6E]">orison</p>
+      <img src="/orison-logo.svg" alt="Orison Services" className="mx-auto mb-3 h-16 w-auto" />
       <p className="mb-8 text-center text-[12px] font-semibold uppercase tracking-[0.2em] text-[#6B7080]">Platform admin</p>
       <div className="rounded-2xl border border-[#E2DDD1] bg-white p-8 shadow-sm">
         <h1 style={serif} className="text-[26px] font-medium">{title}</h1>

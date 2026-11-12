@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Printer } from 'lucide-react';
+import { Pencil, Printer } from 'lucide-react';
 import pApi, { errText } from './platformApi';
 import useFetch from './useFetch';
 import { usePlatform } from './platformContext';
 import { askConfirm, notify } from '../components/AppFeedback';
 import {
   Btn, Card, Empty, ErrorBox, Field, Loading, Meter, Modal, PageHead, Pill, TableWrap, Td, THead, fmtDate, inputCls, inr, num, planTone,
-  statusTone, selectCls } from './ui';
+  serif, statusTone, selectCls } from './ui';
 
 const PLAN_LABEL = { essential: 'Essential', pro: 'Pro', premium: 'Premium' };
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -27,9 +27,9 @@ const printInvoice = async (inv) => {
       <div class="head"><div><h1>${esc(s.company_name)}</h1><div class="muted">${esc(s.address)}</div>${s.gstin ? `<div class="muted">GSTIN: ${esc(s.gstin)}</div>` : ''}</div>
       <div class="r"><h1>TAX INVOICE</h1><div>${esc(inv.number)}</div><div class="muted">Issued ${esc(inv.issued_on)} · Due ${esc(inv.due_on)}</div></div></div>
       <div><b>Billed to:</b> ${esc(inv.school_name)}</div>
-      <div class="muted">${esc(PLAN_LABEL[inv.plan])} plan${inv.academic_year ? ` · Academic year ${esc(inv.academic_year)}` : ''}</div>
+      <div class="muted">${inv.kind === 'product' ? esc(inv.product_label) : `${esc(PLAN_LABEL[inv.plan])} plan`}${inv.academic_year ? ` · Academic year ${esc(inv.academic_year)}` : ''}</div>
       <table>
-        ${row(`Subscription: ${inv.students} students × ${inr(inv.rate_per_student)}`, inr(inv.students * inv.rate_per_student))}
+        ${inv.kind === 'product' ? row(`${inv.description || inv.product_label}: ${inv.quantity} × ${inr(inv.rate)}`, inr(inv.subscription)) : row(`Subscription: ${inv.students} students × ${inr(inv.rate_per_student)}`, inr(inv.students * inv.rate_per_student))}
         ${inv.discount_amount ? row(`Discount (${inv.discount_percent}%)`, `− ${inr(inv.discount_amount)}`) : ''}
         ${inv.minimum_applied ? row(`Minimum yearly fee applied`, inr(inv.subscription)) : ''}
         ${inv.setup_fee ? row('One-time setup fee', inr(inv.setup_fee)) : ''}
@@ -84,7 +84,7 @@ export const InvoiceTable = ({ invoices, onChanged, embedded = false }) => {
               <Td className="font-medium">{inv.number}{inv.academic_year && <div className="text-[12px] font-normal text-[#6B7080]">{inv.academic_year}</div>}</Td>
               {!embedded && <Td><Link to={`/platform/schools/${inv.school_id}`} className="text-[#2E2A6E] hover:underline">{inv.school_name}</Link></Td>}
               <Td>{fmtDate(inv.issued_on)}</Td><Td>{fmtDate(inv.due_on)}</Td><Td className="font-medium">{inr(inv.total)}</Td>
-              <Td><Pill tone={statusTone[inv.status]}>{inv.status}</Pill>{inv.paid_on && <div className="text-[12px] text-[#6B7080]">{fmtDate(inv.paid_on)} · {inv.payment_reference || inv.payment_method}</div>}</Td>
+              <Td><Pill tone={statusTone[inv.status]}>{inv.status}</Pill>{inv.status === 'Unpaid' && inv.paid_amount > 0 && <div className="text-[12px] text-[#B45309]">{inr(inv.paid_amount)} received, {inr(inv.outstanding)} due</div>}{inv.paid_on && <div className="text-[12px] text-[#6B7080]">{fmtDate(inv.paid_on)} · {inv.payment_reference || inv.payment_method}</div>}</Td>
               <Td className="whitespace-nowrap text-right">
                 <button onClick={() => printInvoice(inv)} className="mr-3 inline-flex items-center gap-1 text-[13px] font-medium text-[#3F3A8C] hover:underline"><Printer className="h-3.5 w-3.5" />Print</button>
                 {can('billing:write') && inv.status === 'Unpaid' && (<>
@@ -159,7 +159,7 @@ export const InvoicesPage = () => {
   );
 };
 
-const PlanCard = ({ plan, editable, onSaved }) => {
+const PlanCard = ({ plan, editing, onSaved }) => {
   const [f, setF] = useState({ rate_per_student: plan.rate_per_student, minimum_fee: plan.minimum_fee, setup_fee: plan.setup_fee, whatsapp_per_student: plan.whatsapp_per_student });
   const [busy, setBusy] = useState(false);
   const save = async () => {
@@ -169,22 +169,24 @@ const PlanCard = ({ plan, editable, onSaved }) => {
       notify(`${plan.label} pricing saved`, 'success'); onSaved();
     } catch (err) { notify(errText(err), 'error'); } finally { setBusy(false); }
   };
-  const N = ({ k, label }) => <Field label={label}><input type="number" min="0" disabled={!editable} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} className={inputCls} /></Field>;
+  const rows = [['rate_per_student', 'Rate per student per year', (v) => inr(v)], ['minimum_fee', 'Minimum yearly fee', (v) => inr(v)], ['setup_fee', 'One-time setup fee', (v) => inr(v)], ['whatsapp_per_student', 'WhatsApp messages per student per month', (v) => num(v)]];
   return (
     <Card title={plan.label} action={<Pill tone={planTone[plan.id]}>{plan.features.length} features</Pill>}>
-      <div className="space-y-3">
-        <N k="rate_per_student" label="Rate per student per year (₹)" /><N k="minimum_fee" label="Minimum yearly fee (₹)" />
-        <N k="setup_fee" label="One-time setup fee (₹)" /><N k="whatsapp_per_student" label="WhatsApp messages per student per month" />
-      </div>
+      {editing ? (
+        <div className="space-y-3">{rows.map(([k, label]) => <Field key={k} label={label}><input type="number" min="0" value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} className={inputCls} /></Field>)}</div>
+      ) : (
+        <dl className="divide-y divide-[#F0ECE2]">{rows.map(([k, label, show]) => <div key={k} className="flex items-baseline justify-between gap-4 py-2.5"><dt className="text-[13.5px] text-[#5B6070]">{label}</dt><dd style={serif} className="text-[19px] text-[#1F2433]">{show(plan[k])}</dd></div>)}</dl>
+      )}
       <p className="mt-4 text-[12.5px] text-[#6B7080]">Logins: {plan.logins.map((l) => l.replace('_', ' ')).join(', ')}</p>
-      {editable && <div className="mt-4"><Btn onClick={save} busy={busy}>Save {plan.label}</Btn></div>}
+      {editing && <div className="mt-4"><Btn onClick={save} busy={busy}>Save {plan.label}</Btn></div>}
     </Card>
   );
 };
 
 export const PlansPage = () => {
   const { can } = usePlatform();
-  const editable = can('plans:write');
+  const canEdit = can('plans:write');
+  const [editing, setEditing] = useState(false);
   const { data, loading, error, reload } = useFetch('/plans');
   const [s, setS] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -192,28 +194,37 @@ export const PlansPage = () => {
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (loading || !s) return <Loading />;
   const set = (k) => (e) => setS({ ...s, [k]: e.target.value });
+  const saved = () => { setEditing(false); reload(); };
   const save = async () => {
     setBusy(true);
     try {
       await pApi.put('/settings', {
-        gst_percent: Number(s.gst_percent), overage_rate_per_message: Number(s.overage_rate_per_message), payment_terms_days: Number(s.payment_terms_days),
+        gst_percent: Number(s.gst_percent), overage_rate_per_message: Number(s.overage_rate_per_message), payment_terms_days: Number(s.payment_terms_days), km_rate: Number(s.km_rate), food_per_day: Number(s.food_per_day),
         invoice_prefix: s.invoice_prefix, company_name: s.company_name, gstin: s.gstin, address: s.address,
       });
-      notify('Billing settings saved', 'success'); reload();
+      notify('Billing settings saved', 'success'); saved();
     } catch (err) { notify(errText(err), 'error'); } finally { setBusy(false); }
   };
-  const T = ({ k, label, type = 'text', span }) => <div className={span ? 'sm:col-span-2' : ''}><Field label={label}><input type={type} disabled={!editable} value={s[k]} onChange={set(k)} className={inputCls} /></Field></div>;
+  const fields = [['gst_percent', 'GST %', 'number', (v) => `${v}%`], ['overage_rate_per_message', 'Extra WhatsApp message rate (₹)', 'number', (v) => inr(v)], ['payment_terms_days', 'Payment due after (days)', 'number', (v) => `${v} days`],
+    ['km_rate', 'Travel allowance per km (₹)', 'number', (v) => inr(v)], ['food_per_day', 'Food allowance per day on the road (₹)', 'number', (v) => inr(v)], ['invoice_prefix', 'Invoice number prefix', 'text', (v) => v],
+    ['company_name', 'Company name on invoice', 'text', (v) => v], ['gstin', 'GSTIN', 'text', (v) => v || 'Not added'], ['address', 'Company address', 'text', (v) => v || 'Not added']];
   return (
     <>
-      <PageHead title="Plans & pricing" subtitle={editable ? 'Every amount is a setting. Changes apply to new invoices only.' : 'Read only. Only an Owner can change prices.'} />
-      <div className="grid gap-5 lg:grid-cols-3">{data.plans.map((p) => <PlanCard key={`${p.id}-${p.rate_per_student}-${p.minimum_fee}-${p.setup_fee}-${p.whatsapp_per_student}`} plan={p} editable={editable} onSaved={reload} />)}</div>
-      <div className="mt-6"><Card title="Billing settings" subtitle="Used on every invoice.">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <T k="gst_percent" label="GST %" type="number" /><T k="overage_rate_per_message" label="Extra WhatsApp message rate (₹)" type="number" /><T k="payment_terms_days" label="Payment due after (days)" type="number" />
-          <T k="invoice_prefix" label="Invoice number prefix" /><T k="company_name" label="Company name on invoice" /><T k="gstin" label="GSTIN" />
-          <T k="address" label="Company address" span />
+      <PageHead title="Plans & pricing" subtitle={editing ? 'Editing. Changes apply to new invoices only.' : 'These amounts are fixed and saved. They are shown here for reference.'} />
+      {canEdit && (
+        <div className={`mb-5 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 ${editing ? 'border-amber-300 bg-amber-50' : 'border-[#E2DDD1] bg-white'}`}>
+          {editing ? <><span className="text-[13.5px] text-amber-900">You are editing prices and settings.</span><Btn variant="ghost" onClick={() => { setEditing(false); setS(data.settings); }}>Stop editing</Btn></>
+            : <><Btn variant="ghost" onClick={() => setEditing(true)}><Pencil className="h-4 w-4" />Edit prices and settings</Btn><span className="text-[13px] text-[#6B7080]">Only needed if a price changes in the future.</span></>}
         </div>
-        {editable && <div className="mt-5"><Btn onClick={save} busy={busy}>Save billing settings</Btn></div>}
+      )}
+      <div className="grid gap-5 lg:grid-cols-3">{data.plans.map((p) => <PlanCard key={`${p.id}-${p.rate_per_student}-${p.minimum_fee}-${p.setup_fee}-${p.whatsapp_per_student}-${editing}`} plan={p} editing={editing} onSaved={saved} />)}</div>
+      <div className="mt-6"><Card title="Billing and allowance settings" subtitle="Used on every invoice and in the sales team's travel and food allowance.">
+        {editing ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{fields.map(([k, label, type]) => <div key={k} className={k === 'address' ? 'sm:col-span-2' : ''}><Field label={label}><input type={type} value={s[k]} onChange={set(k)} className={inputCls} /></Field></div>)}</div>
+        ) : (
+          <dl className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">{fields.map(([k, label, , show]) => <div key={k} className={`border-b border-[#F0ECE2] py-3 ${k === 'address' ? 'sm:col-span-2' : ''}`}><dt className="text-[12px] text-[#6B7080]">{label}</dt><dd className="mt-0.5 text-[15px] font-medium text-[#1F2433]">{show(s[k])}</dd></div>)}</dl>
+        )}
+        {editing && <div className="mt-5"><Btn onClick={save} busy={busy}>Save settings</Btn></div>}
       </Card></div>
     </>
   );
