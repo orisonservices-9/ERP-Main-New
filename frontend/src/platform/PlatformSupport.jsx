@@ -96,6 +96,7 @@ export const SupportTicket = () => {
   const editable = can('tickets:write');
   const { data, loading, error, reload } = useFetch(`/tickets/${id}`);
   const people = useFetch('/tickets/assignees');
+  const rel = useFetch('/dev/overview');
   const [text, setText] = useState('');
   const [internal, setInternal] = useState(false);
   const [newStatus, setNewStatus] = useState('');
@@ -174,6 +175,7 @@ export const SupportTicket = () => {
               <Field label="Status"><select disabled={!editable} value={data.status} onChange={(e) => change({ status: e.target.value }, 'Status updated')} className={inputCls}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select></Field>
               <Field label="Priority"><select disabled={!editable} value={data.priority} onChange={(e) => change({ priority: e.target.value }, 'Priority updated')} className={inputCls}>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}</select></Field>
               <Field label="Assigned to"><select disabled={!editable} value={data.assigned_to} onChange={(e) => change({ assigned_to: e.target.value }, 'Assignment updated')} className={inputCls}><option value="">Unassigned</option>{(people.data || []).map((p) => <option key={p.id} value={p.id}>{p.name} ({p.role})</option>)}</select></Field>
+              <Field label="Fixed in release"><select disabled={!editable} value={data.fixed_in_id || ''} onChange={(e) => change({ fixed_in: e.target.value }, 'Release saved')} className={inputCls}><option value="">Not fixed yet</option>{(rel.data?.releases || []).filter((r) => r.kind !== 'Known issue').map((r) => <option key={r.id} value={r.id}>{r.version}: {r.title}</option>)}</select></Field>
             </div>
           </Card>
           <Card title="Reported by">

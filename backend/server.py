@@ -5204,6 +5204,8 @@ async def ensure_indexes():
 async def startup():
     await ensure_indexes()
     await platform_startup()
+    await platform_finance_more.start_background()
+    await platform_extras.start_digests()
     await seed()
 
 @api_router.get("/")
@@ -7460,9 +7462,14 @@ async def enforce_branch_boundary(request, call_next):
 app.include_router(api_router)
 
 # Orison owner ("super admin") API: separate accounts, token and database. See platform_admin.py.
+from platform_finance import finance_router
+import platform_payroll  # adds staff salaries and company expenses to finance_router
+import platform_extras  # adds targets, digests, GST sheet, payslips, invoice email, developer overview
+import platform_finance_more  # adds claims, credit notes, bank matching, reminders and overview to finance_router
 from platform_admin import platform_router, support_router, platform_startup, track_login, track_request, create_parent_ticket
 app.include_router(platform_router)
 app.include_router(support_router)
+app.include_router(finance_router)
 
 
 @app.middleware('http')

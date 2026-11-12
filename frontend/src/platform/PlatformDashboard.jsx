@@ -64,6 +64,8 @@ const PlatformDashboard = () => {
   const tickets = useFetch('/tickets', { limit: 6 });
   const urgent = useFetch('/tickets', { priority: 'Urgent', limit: 5 });
   const usage = useFetch('/usage');
+  const fin = useFetch('/finance/overview');
+  const since = useFetch('/changes');
   if (dash.loading && !dash.data) return <Loading />;
   if (dash.error) return <ErrorBox message={dash.error} onRetry={dash.reload} />;
   const d = dash.data;
@@ -104,6 +106,19 @@ const PlatformDashboard = () => {
         </div>
       </div>
 
+      {since.data && (
+        <section className="mb-6 rounded-2xl border border-[#E2DDD1] bg-white p-5" aria-label="Since yesterday">
+          <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-[#6B7080]">Yesterday, {fmtDate(since.data.date)}</p>
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {since.data.items.map((i) => (
+              <li key={i.key}><Link to={i.to} className="block rounded-xl bg-[#FAF8F3] px-3.5 py-2.5 transition hover:bg-[#F4F1EA]">
+                <p style={serif} className={`text-[22px] font-medium leading-none ${i.warn && i.value > 0 ? 'text-[#B91C1C]' : 'text-[#1F2433]'}`}>{i.money === true ? shortInr(i.value) : num(i.value)}</p>
+                <p className="mt-1.5 text-[12px] text-[#6B7080]">{i.label}{i.money && i.money !== true && i.value > 0 ? ` · ${shortInr(i.money)}` : ''}</p>
+              </Link></li>))}
+          </ul>
+        </section>
+      )}
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <Tile icon={Building2} label="Schools" value={num(d.schools_total)} accent="#3F3A8C" to="/platform/schools"
           hint={`${d.by_status.Active} active · ${d.by_status.Trial} on trial${d.by_status.Suspended + d.by_status.Expired ? ` · ${d.by_status.Suspended + d.by_status.Expired} stopped` : ''}`} />
@@ -115,6 +130,45 @@ const PlatformDashboard = () => {
           hint={sales ? `${sales.open} open schools · ${sales.follow_ups.overdue + sales.follow_ups.today} follow-ups due` : 'Loading…'} />
         <Tile icon={LifeBuoy} label="Open tickets" value={tickets.data ? num(openTickets) : '—'} accent={urgentOpen.length ? '#DC2626' : openTickets ? '#F59E0B' : '#10B981'} to="/platform/support"
           hint={tickets.data ? (urgentOpen.length ? `${urgentOpen.length} urgent` : openTickets ? 'None urgent' : 'All answered') : 'Loading…'} />
+      </div>
+
+      <div className="mt-6">
+        <Panel title="Accounts" subtitle="Money to collect, the sales team's travel, and what your accounts team is waiting on" action={<More to="/platform/finance">Open the Accounts desk</More>}>
+          <Soft loading={fin.loading} error={fin.error}>
+            {fin.data && (
+              <>
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                  {[
+                    ['Still to collect', shortInr(fin.data.collections.outstanding), `${shortInr(fin.data.collections.overdue)} overdue`, '/platform/finance/collections', fin.data.collections.overdue ? 'text-[#B91C1C]' : ''],
+                    ['Received this month', shortInr(fin.data.collections.received_this_month), 'ERP and other products', '/platform/finance/collections', ''],
+                    ['To chase today', num(fin.data.chase), `${fin.data.collections.promises_overdue} promises missed`, '/platform/finance', fin.data.collections.promises_overdue ? 'text-[#B91C1C]' : ''],
+                    ['Travel this month', `${num(fin.data.travel.km)} km`, `${inr(fin.data.travel.to_pay)} still to pay at ₹${fin.data.travel.rate}/km`, '/platform/finance/travel', ''],
+                    ['Salaries to pay', shortInr(fin.data.payroll.to_pay), `Company expenses this month ${shortInr(fin.data.company_expenses)}`, '/platform/finance/payroll', fin.data.payroll.to_pay ? 'text-[#B45309]' : ''],
+                  ].map(([k, v, h, to, tone]) => (
+                    <Link key={k} to={to} className="rounded-xl border border-[#E2DDD1] bg-[#FAF8F3] px-4 py-3 transition hover:bg-white">
+                      <p className="text-[11.5px] font-semibold uppercase tracking-wide text-[#6B7080]">{k}</p>
+                      <p style={serif} className={`mt-1 text-[24px] font-medium leading-none ${tone || 'text-[#1F2433]'}`}>{v}</p>
+                      <p className="mt-1.5 text-[12px] text-[#6B7080]">{h}</p>
+                    </Link>
+                  ))}
+                </div>
+                {(fin.data.claims_pending > 0 || fin.data.payroll.drafts > 0 || fin.data.reports_unseen > 0 || fin.data.travel.missing > 0) && (
+                  <p className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-[#4A4F5C]">
+                    {fin.data.reports_unseen > 0 && <Link to="/platform/finance/reports" className="font-medium text-[#2E2A6E] hover:underline">{fin.data.reports_unseen} new report from Accounts</Link>}
+                    {fin.data.claims_pending > 0 && <Link to="/platform/finance/travel" className="hover:underline">{fin.data.claims_pending} expense claim{fin.data.claims_pending === 1 ? '' : 's'} waiting for review</Link>}
+                    {fin.data.payroll.drafts > 0 && <Link to="/platform/finance/payroll" className="hover:underline">{fin.data.payroll.drafts} salar{fin.data.payroll.drafts === 1 ? 'y' : 'ies'} waiting for approval</Link>}
+                    {fin.data.travel.missing > 0 && <Link to="/platform/finance/travel" className="text-[#B45309] hover:underline">{fin.data.travel.missing} travel distance{fin.data.travel.missing === 1 ? '' : 's'} to check</Link>}
+                  </p>
+                )}
+                {fin.data.top_overdue.length > 0 && (
+                  <ul className="mt-3 divide-y divide-[#F0ECE2] text-[13.5px]">
+                    {fin.data.top_overdue.map((i) => <li key={i.id} className="flex flex-wrap items-center justify-between gap-2 py-2"><span><b className="text-[#1F2433]">{i.school_name}</b> <span className="text-[#6B7080]">· {i.product} · {i.days_overdue} days late</span></span><span className="font-medium">{inr(i.outstanding)}{i.next_promise ? <span className="ml-2 text-[12px] font-normal text-[#6B7080]">promised {fmtDate(i.next_promise.promised_on)}</span> : <span className="ml-2 text-[12px] font-normal text-[#B91C1C]">no promise</span>}</span></li>)}
+                  </ul>
+                )}
+              </>
+            )}
+          </Soft>
+        </Panel>
       </div>
 
       <div className="mt-6">

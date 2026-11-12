@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Camera, Check, ImagePlus, LocateFixed, MapPin, Navigation, Pencil, RotateCcw, Route as RouteIcon, Trash2, Users } from 'lucide-react';
+import { Camera, Check, Home, ImagePlus, LocateFixed, MapPin, Navigation, Pencil, Route as RouteIcon, Trash2, Users } from 'lucide-react';
 import pApi, { errText } from './platformApi';
 import useFetch from './useFetch';
 import { usePlatform } from './platformContext';
@@ -69,7 +69,8 @@ export const PhotosCard = ({ lead, onChanged }) => {
   const [caption, setCaption] = useState('');
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(null);
-  const mine = (p) => p.by_id === user.id || can('schools:create');
+  const isOwner = can('*');
+  const mine = (p) => can('schools:create') || (p.by_id === user.id && !p.activity_id);
   const upload = async (list) => {
     const files = Array.from(list || []); if (!files.length) return;
     setBusy(true); let done = 0;
@@ -87,13 +88,13 @@ export const PhotosCard = ({ lead, onChanged }) => {
   };
   return (
     <Card title={`Photos from the school${lead.photos.length ? ` (${lead.photos.length})` : ''}`}>
-      <div className="flex flex-wrap items-end gap-3">
+      {!isOwner && <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[200px] flex-1"><Field label="What is it a photo of? (optional)"><input value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={200} placeholder="e.g. Front gate, computer lab, signboard" className={inputCls} /></Field></div>
         <Btn onClick={() => camera.current?.click()} busy={busy}><Camera className="h-4 w-4" />Take a photo</Btn>
         <Btn variant="ghost" onClick={() => gallery.current?.click()} disabled={busy}><ImagePlus className="h-4 w-4" />Choose photos</Btn>
         <input ref={camera} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => upload(e.target.files)} data-testid="photo-camera" />
         <input ref={gallery} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e) => upload(e.target.files)} data-testid="photo-gallery" />
-      </div>
+      </div>}
       {lead.photos.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-[#D8D3C6] px-4 py-6 text-center text-[13.5px] text-[#6B7080]">No photos yet. A photo of the school gate or signboard proves the visit and helps whoever goes next.</p> : (
         <ul className="mt-4 grid grid-cols-3 gap-2.5 sm:grid-cols-4">
           {lead.photos.map((p) => (
@@ -130,22 +131,77 @@ const LegPill = ({ stop, onSave }) => {
         <input autoFocus onFocus={(e) => e.target.select()} type="number" min="0" step="0.1" value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { onSave(stop, value); setEdit(false); } if (e.key === 'Escape') setEdit(false); }} aria-label="Distance in km" className="w-20 text-[13px] outline-none" />
         <span className="text-[12px] text-[#6B7080]">km</span>
         <button type="button" aria-label="Save distance" onClick={() => { onSave(stop, value); setEdit(false); }} className="rounded-full bg-[#2E2A6E] p-1 text-white"><Check className="h-3.5 w-3.5" /></button>
-        {stop.km_source === 'entered' && <button type="button" aria-label="Use the map estimate instead" title="Go back to the map estimate" onClick={() => { onSave(stop, ''); setEdit(false); }} className="rounded-full p-1 text-[#6B7080] hover:bg-[#F4F1EA]"><RotateCcw className="h-3.5 w-3.5" /></button>}
       </span>
     );
   }
   const known = stop.km !== null;
-  const tone = !known ? ['#FBE3E3', '#B91C1C'] : stop.km_source === 'entered' ? ['#DAF3E8', '#047857'] : ['#FCEFD9', '#B45309'];
+  const tone = !known || stop.flag ? ['#FBE3E3', '#B91C1C'] : stop.km_source === 'entered' ? ['#DAF3E8', '#047857'] : ['#FCEFD9', '#B45309'];
   return (
-    <button type="button" onClick={start} className="group inline-flex items-center gap-2 rounded-full px-3 py-1 text-[13px] font-semibold transition hover:shadow" style={{ background: tone[0], color: tone[1] }} title="Click to type the real distance">
-      {known ? `${stop.km} km` : stop.first ? 'Add distance from where you started' : 'Distance unknown. Add it'}
+    <button type="button" onClick={start} className="group inline-flex items-center gap-2 rounded-full px-3 py-1 text-[13px] font-semibold transition hover:shadow" style={{ background: tone[0], color: tone[1] }} title="Click to correct the distance">
+      {known ? `${stop.km} km` : 'Distance missing. Add it'}
       {known && <span className="text-[11px] font-medium opacity-80">{stop.km_source === 'entered' ? 'typed' : 'straight line'}</span>}
       <Pencil className="h-3 w-3 opacity-60 group-hover:opacity-100" />
     </button>
   );
 };
 
-const DayCard = ({ day, ownerView, onSave }) => {
+
+// ---------------------------------------------------------------- the trip home at the end of the day
+export const TripHome = ({ day, onChanged, canEdit }) => {
+  const [open, setOpen] = useState(false);
+  const [km, setKm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const back = day.return_trip;
+  const save = async () => {
+    if (km === '' || Number(km) < 0) return notify('Enter the km from your last school to home or office.', 'error');
+    setBusy(true);
+    try { await pApi.post('/trips/return', { date: day.date, distance_km: Number(km) }); notify('Trip home saved', 'success'); setOpen(false); onChanged(); } catch (err) { notify(errText(err), 'error'); } finally { setBusy(false); }
+  };
+  const remove = async () => {
+    if (!(await askConfirm('Remove the trip home for this day?'))) return;
+    try { await pApi.delete(`/trips/return/${back.id}`); notify('Removed', 'success'); onChanged(); } catch (err) { notify(errText(err), 'error'); }
+  };
+  if (open) {
+    return (
+      <div className="ml-[15px] flex flex-wrap items-center gap-2 border-l-2 border-dashed border-[#D8D3C6] py-2.5 pl-6">
+        <input autoFocus type="number" min="0" max="2000" step="0.1" value={km} onChange={(e) => setKm(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setOpen(false); }} aria-label="Km from the last school to home" placeholder="km" className={`${selectCls} w-28`} />
+        <span className="text-[12.5px] text-[#6B7080]">km from the last school to home or office</span>
+        <Btn onClick={save} busy={busy}>Save</Btn><Btn variant="ghost" onClick={() => setOpen(false)}>Cancel</Btn>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="ml-[15px] flex items-center gap-3 border-l-2 border-dashed border-[#D8D3C6] py-2.5 pl-6">
+        {back ? <span className="inline-flex items-center gap-2 rounded-full bg-[#DAF3E8] px-3 py-1 text-[13px] font-semibold text-[#047857]">{back.km} km<span className="text-[11px] font-medium opacity-80">trip home</span></span>
+          : <span className="rounded-full bg-[#F4F1EA] px-3 py-1 text-[13px] text-[#6B7080]">Trip home not logged</span>}
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#047857] text-white"><Home className="h-4 w-4" /></span>
+        <p className="min-w-0 flex-1 text-[14px] font-semibold text-[#1F2433]">Back home or office{back?.note ? <span className="font-normal text-[#6B7080]"> · {back.note}</span> : ''}</p>
+        {canEdit && <Btn variant="ghost" onClick={() => { setKm(back ? String(back.km) : ''); setOpen(true); }}>{back ? 'Change' : 'Add trip home'}</Btn>}
+        {canEdit && back && <button type="button" onClick={remove} aria-label="Remove the trip home" className="rounded-full p-1.5 text-[#B91C1C] hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>}
+      </div>
+    </div>
+  );
+};
+
+// A reminder on the Sales page: you visited schools today, so log the trip home.
+export const TripHomeBar = () => {
+  const { user } = usePlatform();
+  const { data, reload } = useFetch('/leads/routes', { from: iso(new Date()), to: iso(new Date()), owner_id: user.id, bar: 1 });
+  const day = (data?.days || []).find((d) => d.date === data?.today && d.owner_id === user.id);
+  if (!day) return null;
+  return (
+    <section className="mb-6 rounded-2xl border border-[#E2DDD1] bg-white p-5" aria-label="Today's travel">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2"><h2 style={serif} className="text-[19px] font-medium text-[#1F2433]">Today's travel</h2><span className="text-[13px] text-[#5B6070]">{day.stops.length} {day.stops.length === 1 ? 'school' : 'schools'} · <b className="text-[#1F2433]">{day.total_km} km</b> so far</span></div>
+      <p className="mb-3 text-[13px] text-[#6B7080]">{day.return_trip ? 'Your trip home is logged.' : 'Done for the day? Add the km from your last school back home so your travel allowance is complete.'}</p>
+      <TripHome day={day} onChanged={reload} canEdit />
+    </section>
+  );
+};
+
+const DayCard = ({ day, ownerView, onSave, onChanged, mine }) => {
   const weekday = new Date(`${day.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long' });
   return (
     <section className="rounded-2xl border border-[#E2DDD1] bg-white p-5">
@@ -162,7 +218,8 @@ const DayCard = ({ day, ownerView, onSave }) => {
           <li key={s.activity_id}>
             <div className="ml-[15px] flex items-center gap-3 border-l-2 border-dashed border-[#D8D3C6] py-2.5 pl-6">
               <LegPill stop={s} onSave={onSave} />
-              <span className="text-[12px] text-[#8A8F9C]">{s.first ? 'from where the day started' : `from ${day.stops[i - 1].school_name}`}</span>
+              <span className="text-[12px] text-[#8A8F9C]">{s.first ? 'from where the day started' : `from ${day.stops[i - 1].school_name}`}{s.estimate_km ? ` · map says about ${s.estimate_km} km in a straight line` : ''}</span>
+              {s.flag && <span className="text-[12px] font-medium text-red-700">{s.flag}</span>}
             </div>
             <div className="flex items-center gap-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2E2A6E] text-[13px] font-bold text-white">{i + 1}</span>
@@ -174,11 +231,13 @@ const DayCard = ({ day, ownerView, onSave }) => {
           </li>
         ))}
       </ol>
+      <TripHome day={day} onChanged={onChanged} canEdit={mine} />
     </section>
   );
 };
 
 export const RoutesView = ({ ownerView, salespeople }) => {
+  const { user } = usePlatform();
   const [preset, setPreset] = useState('7');
   const [owner, setOwner] = useState('');
   const { data, loading, error, reload } = useFetch('/leads/routes', { from: ago(Number(preset) - 1), to: ago(0), owner_id: owner });
@@ -195,13 +254,20 @@ export const RoutesView = ({ ownerView, salespeople }) => {
       </div>
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} onRetry={reload} /> : (<>
         <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {[[RouteIcon, 'Distance travelled', `${num(data.totals.km)} km`, `${fmtDate(data.range.from)} to ${fmtDate(data.range.to)}`], [Users, 'Days on the road', num(data.totals.days), 'Days with at least one visit'], [MapPin, 'Schools visited', num(data.totals.stops), 'Visits, meetings and demos'], [Navigation, 'Distances missing', num(data.totals.unknown_legs), data.totals.unknown_legs ? 'Add a map pin or type the km' : 'Every leg has a distance']].map(([Icon, label, value, hint]) => (
+          {[[RouteIcon, 'Distance travelled', `${num(data.totals.km)} km`, `${fmtDate(data.range.from)} to ${fmtDate(data.range.to)}`], [Users, 'Days on the road', num(data.totals.days), 'Days with at least one visit'], [MapPin, 'Schools visited', num(data.totals.stops), 'Visits, meetings and demos'], [Navigation, 'Needs checking', num(data.totals.unknown_legs + (data.totals.flags || 0)), data.totals.unknown_legs || data.totals.flags ? `${data.totals.unknown_legs} missing, ${data.totals.flags || 0} look wrong` : 'Every distance looks right']].map(([Icon, label, value, hint]) => (
             <div key={label} className="rounded-2xl border border-[#E2DDD1] bg-white px-5 py-4"><div className="flex items-center justify-between"><p className="text-[12px] font-semibold uppercase tracking-wide text-[#6B7080]">{label}</p><Icon className="h-[18px] w-[18px] text-[#3F3A8C]" /></div><p style={serif} className="mt-1.5 text-[28px] font-medium leading-none text-[#1F2433]">{value}</p><p className="mt-2 text-[12.5px] text-[#6B7080]">{hint}</p></div>
           ))}
         </div>
-        <p className="mb-4 rounded-xl bg-[#FAF8F3] px-4 py-3 text-[13px] leading-5 text-[#5B6070]">The distance between two schools is worked out in a straight line from their map pins, so the real road distance is usually a little longer. If you know the real distance, click it and type it. A typed distance always wins.</p>
+        {ownerView && data.by_person?.length > 0 && (
+          <section className="mb-5 rounded-2xl border border-[#E2DDD1] bg-white p-5" aria-label="Kilometres by salesperson">
+            <h2 className="mb-3 text-[15px] font-semibold text-[#1F2433]">Kilometres by salesperson (for travel allowance)</h2>
+            <div className="overflow-x-auto"><table className="w-full text-[14px]"><thead><tr className="text-left text-[12px] uppercase tracking-wide text-[#6B7080]"><th className="pb-2">Salesperson</th><th className="pb-2">Days</th><th className="pb-2">Schools</th><th className="pb-2 text-right">Total km</th></tr></thead>
+              <tbody>{data.by_person.map((p) => <tr key={p.owner_id} className="border-t border-[#F0ECE2]"><td className="py-2 font-medium">{p.name}</td><td>{p.days}</td><td>{p.stops}</td><td className="text-right font-semibold">{num(p.km)} km</td></tr>)}</tbody></table></div>
+          </section>
+        )}
+        <p className="mb-4 rounded-xl bg-[#FAF8F3] px-4 py-3 text-[13px] leading-5 text-[#5B6070]">Each distance is typed by the salesperson when they log the visit: km from their previous school that day (or from where they started). The grey note shows the straight-line distance between the two map pins as a cross-check; a typed distance shorter than that, or far longer, is marked red. A salesperson can correct a distance on the same day only; after that only the owner can.</p>
         {data.days.length === 0 ? <div className="rounded-2xl border border-[#E2DDD1] bg-white"><Empty>No school visits in this period. When you log a visit, the day's route appears here.</Empty></div> : (
-          <div className="space-y-5">{data.days.map((day) => <DayCard key={`${day.date}${day.owner_id}`} day={day} ownerView={ownerView} onSave={save} />)}</div>
+          <div className="space-y-5">{data.days.map((day) => <DayCard key={`${day.date}${day.owner_id}`} day={day} ownerView={ownerView} onSave={save} onChanged={reload} mine={day.owner_id === user.id} />)}</div>
         )}
       </>)}
     </div>

@@ -161,14 +161,17 @@ DEFAULT_PLANS = {
 DEFAULT_SETTINGS = {
     'id': 'platform', 'gst_percent': 18, 'overage_rate_per_message': 0, 'alert_thresholds': [80, 100],
     'invoice_prefix': 'ORI', 'company_name': 'Orison Services', 'gstin': '', 'address': '',
-    'payment_terms_days': 15,
+    'payment_terms_days': 15, 'km_rate': 3.0, 'food_per_day': 150.0,
 }
 
 ROLE_PERMISSIONS = {
     'owner': {'*'},
     'developer': {'tickets:read', 'tickets:write'},  # only the support tickets: no schools, prices, billing or team
     # Sales works only on their own leads (schools they visit) and can read the price list to quote. Nothing else.
-    'sales': {'leads:own', 'pricing:read'},
+    'sales': {'leads:own', 'pricing:read', 'expenses:own'},  # expenses:own = claim their own travel costs with a bill photo
+    # Accounts: travel allowance of the sales team, their expenses, invoices and payments from schools (ERP and other products),
+    # payment promises and the reports sent to the owner. No leads, schools settings, school logins, tickets or team.
+    'accounts': {'finance:read', 'finance:write', 'billing:read', 'billing:write'},
 }
 SCHOOL_STATUSES = ['Trial', 'Active', 'Suspended', 'Expired']
 
@@ -210,6 +213,24 @@ def _stamp() -> str:
 
 def _iso(value: Optional[datetime] = None) -> str:
     return (value or _now()).isoformat(timespec='seconds')
+
+
+IST = timedelta(hours=5, minutes=30)
+
+
+def ist_date(stamp: str) -> str:
+    """The Indian calendar date of a stored UTC timestamp. Days in this app are Indian days, so 1 am on the 13th in India is the 13th, not the 12th."""
+    try:
+        return (datetime.fromisoformat(stamp[:19]) + IST).strftime('%Y-%m-%d')
+    except ValueError:
+        return (stamp or '')[:10]
+
+
+def ist_range_to_utc(start: str, end: str) -> tuple:
+    """An Indian date range as the UTC timestamps that bound it."""
+    lo = datetime.strptime(start, '%Y-%m-%d') - IST
+    hi = datetime.strptime(end, '%Y-%m-%d') + timedelta(days=1) - IST - timedelta(seconds=1)
+    return lo.isoformat(timespec='seconds'), hi.isoformat(timespec='seconds')
 
 
 def hash_password(password: str, salt_hex: Optional[str] = None):
@@ -262,7 +283,7 @@ def client_ip(request: Request) -> str:
 async def audit(actor: Optional[dict], action: str, target: str = '', detail: Any = None, ip: str = '', actor_label: str = ''):
     await pdb.platform_audit.insert_one({
         'id': f'AUD-{uuid.uuid4().hex[:12].upper()}', 'at': _iso(),
-        'actor_id': (actor or {}).get('id', ''), 'actor': (actor or {}).get('email', actor_label),
+        'actor_id': (actor or {}).get('id', ''), 'actor': (actor or {}).get('email', actor_label), 'actor_name': (actor or {}).get('name', ''),
         'actor_role': (actor or {}).get('role', ''), 'action': action, 'target': target,
         'detail': detail if detail is not None else '', 'ip': ip,
     })
@@ -307,6 +328,21 @@ def require_perm(permission: str):
             return user
         raise HTTPException(403, 'Your platform role does not allow this action.')
     return dependency
+
+
+def require_staff(permission: str, message: str = 'Only the Accounts login can do this. The owner sees the details but does not change them.'):
+    """Like require_perm, but the owner's all-access (*) does not count: the role must hold the permission itself."""
+    async def dependency(user: dict = Depends(current_user)) -> dict:
+        if permission in ROLE_PERMISSIONS.get(user.get('role'), set()):
+            return user
+        raise HTTPException(403, message)
+    return dependency
+
+
+async def require_owner(user: dict = Depends(current_user)) -> dict:
+    if '*' in ROLE_PERMISSIONS.get(user.get('role'), set()):
+        return user
+    raise HTTPException(403, 'Only the owner can do this.')
 
 
 # ---------------------------------------------------------------- models
@@ -434,6 +470,8 @@ class SettingsUpdate(BaseModel):
     gstin: Optional[str] = None
     address: Optional[str] = None
     payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
+    km_rate: Optional[float] = Field(default=None, ge=0, le=100)  # travel allowance, rupees per km
+    food_per_day: Optional[float] = Field(default=None, ge=0, le=5000)  # food allowance for every day a salesperson visits schools
 
 
 # ---------------------------------------------------------------- helpers
@@ -528,6 +566,7 @@ async def platform_startup():
     await pdb.platform_tickets.create_index([('status', 1), ('created_at', -1)])
     await pdb.platform_tickets.create_index([('reporter_key', 1), ('created_at', -1)])
     await pdb.platform_usage_daily.create_index([('school_id', 1), ('date', 1), ('role', 1), ('client', 1), ('feature', 1)], unique=True)
+    await pdb.platform_returns.create_index([('owner_id', 1), ('date', 1)], unique=True)
     await pdb.platform_app_users.create_index([('school_id', 1), ('client', 1), ('user_key', 1)], unique=True)
     for plan, values in DEFAULT_PLANS.items():
         await pdb.platform_plans.update_one({'id': plan}, {'$setOnInsert': {'id': plan, **values}}, upsert=True)
@@ -953,11 +992,27 @@ async def create_invoice(school_id: str, body: InvoiceCreate, request: Request, 
     due = _now() + timedelta(days=int(settings['payment_terms_days']))
     doc = {'id': f'INV-{uuid.uuid4().hex[:10].upper()}', 'number': number, 'school_id': school_id, 'school_name': school['name'],
            'plan': school.get('plan'), 'academic_year': body.academic_year.strip(), 'note': body.note.strip(),
-           **figures, 'status': 'Unpaid', 'issued_on': _now().strftime('%Y-%m-%d'), 'due_on': due.strftime('%Y-%m-%d'),
+           **figures, 'status': 'Unpaid', 'issued_on': today_ist(), 'due_on': due.strftime('%Y-%m-%d'),
            'created': _iso(), 'created_by': user['email']}
     await pdb.platform_invoices.insert_one(doc.copy())
     await audit(user, 'invoice_created', doc['number'], {'school': school['name'], 'total': doc['total']}, client_ip(request))
     return doc
+
+
+def with_balance(inv: dict) -> dict:
+    """How much of an invoice is paid, credited and refunded. Invoices marked Paid before part-payments existed count as fully paid."""
+    total = float(inv.get('total') or 0)
+    credit = round(sum(float(c['amount']) for c in inv.get('credit_notes', [])), 2)
+    net = round(max(0.0, total - credit), 2)
+    paid_raw = total if (inv.get('status') == 'Paid' and not inv.get('payments') and not inv.get('closed_by_credit')) else round(sum(float(p['amount']) for p in inv.get('payments', [])), 2)
+    refunded = round(sum(float(r['amount']) for r in inv.get('refunds', [])), 2)
+    inv['credit_amount'] = credit
+    inv['net_total'] = net
+    inv['paid_amount'] = paid_raw
+    inv['refunded_amount'] = refunded
+    inv['refund_due'] = 0.0 if inv.get('status') == 'Cancelled' else round(max(0.0, paid_raw - net - refunded), 2)
+    inv['outstanding'] = 0.0 if inv.get('status') in ('Paid', 'Cancelled') else round(max(0.0, net - paid_raw), 2)
+    return inv
 
 
 @platform_router.get('/invoices')
@@ -967,7 +1022,7 @@ async def list_invoices(status: str = '', school_id: str = '', user: dict = Depe
         query['status'] = status
     if school_id:
         query['school_id'] = school_id
-    return [clean(row) for row in await pdb.platform_invoices.find(query).sort('created', -1).to_list(1000)]
+    return [with_balance(clean(row)) for row in await pdb.platform_invoices.find(query).sort('created', -1).to_list(1000)]
 
 
 @platform_router.put('/invoices/{invoice_id}/status')
@@ -979,7 +1034,7 @@ async def update_invoice(invoice_id: str, body: InvoicePay, request: Request, us
         raise HTTPException(422, 'Choose Paid, Unpaid or Cancelled.')
     changes: Dict[str, Any] = {'status': body.status, 'updated': _iso()}
     if body.status == 'Paid':
-        changes.update({'paid_on': valid_date(body.paid_on, 'Paid on') or _now().strftime('%Y-%m-%d'),
+        changes.update({'paid_on': valid_date(body.paid_on, 'Paid on') or today_ist(),
                         'payment_method': body.method.strip(), 'payment_reference': body.reference.strip()})
     await pdb.platform_invoices.update_one({'id': invoice_id}, {'$set': changes})
     await audit(user, 'invoice_status_changed', invoice['number'], {'to': body.status, 'reference': body.reference}, client_ip(request))
@@ -1173,14 +1228,14 @@ async def track_request(path: str, status: int, authorization: Optional[str], x_
         if not role:
             return
         await pdb.platform_usage_daily.update_one(
-            {'school_id': school_id, 'date': _now().strftime('%Y-%m-%d'), 'role': role, 'client': normalise_client(x_client, role), 'feature': feature},
+            {'school_id': school_id, 'date': (_now() + IST).strftime('%Y-%m-%d'), 'role': role, 'client': normalise_client(x_client, role), 'feature': feature},
             {'$inc': {'count': 1}, '$set': {'last_used': _iso()}}, upsert=True)
     except Exception:
         pass
 
 
 def _date_range(date_from: str, date_to: str):
-    today = _now().date()
+    today = (_now() + IST).date()
     try:
         end = datetime.strptime(date_to, '%Y-%m-%d').date() if date_to else today
         start = datetime.strptime(date_from, '%Y-%m-%d').date() if date_from else end - timedelta(days=29)
@@ -1194,7 +1249,8 @@ def _date_range(date_from: str, date_to: str):
 
 
 def _login_query(school_id: str, start, end, client: str, role: str) -> dict:
-    query: Dict[str, Any] = {'school_id': school_id, 'at': {'$gte': f'{start}T00:00:00', '$lte': f'{end}T23:59:59'}}
+    lo, hi = ist_range_to_utc(str(start), str(end))
+    query: Dict[str, Any] = {'school_id': school_id, 'at': {'$gte': lo, '$lte': hi}}
     if client:
         query['client'] = client
     if role:
@@ -1214,7 +1270,7 @@ async def school_activity(school_id: str, date_from: str = Query('', alias='from
     per_day = {d: 0 for d in days}
     people, by_client, by_role = set(), {}, {}
     for row in logins:
-        per_day[row['at'][:10]] = per_day.get(row['at'][:10], 0) + 1
+        per_day[ist_date(row['at'])] = per_day.get(ist_date(row['at']), 0) + 1
         people.add((row['role'], row['user_key']))
         by_client[row['client']] = by_client.get(row['client'], 0) + 1
         by_role[row['role']] = by_role.get(row['role'], 0) + 1
@@ -1352,7 +1408,7 @@ def platform_ticket(t: dict, full: bool = False) -> dict:
         'type': t['type'], 'category': t['category'], 'feature': t.get('feature', ''), 'feature_label': t.get('feature_label', ''),
         'subject': t['subject'], 'priority': t['priority'], 'status': t['status'], 'assigned_to': t.get('assigned_to', ''),
         'assigned_name': t.get('assigned_name', ''), 'created_at': t['created_at'], 'updated_at': t['updated_at'],
-        'resolved_at': t.get('resolved_at', ''), 'messages': len([m for m in t.get('thread', []) if m['from'] in ('school', 'orison')]),
+        'resolved_at': t.get('resolved_at', ''), 'fixed_in': t.get('fixed_in', ''), 'fixed_in_id': t.get('fixed_in_id', ''), 'messages': len([m for m in t.get('thread', []) if m['from'] in ('school', 'orison')]),
     }
     if full:
         item.update({'description': t['description'], 'error_details': t.get('error_details', ''), 'page': t.get('page', ''),
@@ -1496,6 +1552,7 @@ class TicketUpdate(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     assigned_to: Optional[str] = None
+    fixed_in: Optional[str] = None  # the release id in which the problem was fixed ('' to clear)
 
 
 class TicketMessage(BaseModel):
@@ -1525,7 +1582,8 @@ async def list_tickets(status: str = '', school_id: str = '', source: str = '', 
     if date_from or date_to:
         start, end = _date_range(date_from, date_to) if date_from and date_to else (None, None)
         if start:
-            query['created_at'] = {'$gte': f'{start}T00:00:00', '$lte': f'{end}T23:59:59'}
+            lo, hi = ist_range_to_utc(str(start), str(end))
+            query['created_at'] = {'$gte': lo, '$lte': hi}
         else:
             raise HTTPException(422, 'Choose both a start and an end date.')
     status_counts: Dict[str, int] = {s: 0 for s in TICKET_STATUSES}
@@ -1585,6 +1643,16 @@ async def update_ticket(ticket_id: str, body: TicketUpdate, request: Request, us
         else:
             changes.update({'assigned_to': '', 'assigned_name': ''})
             notes.append(system_note('Assignment removed', user))
+    if body.fixed_in is not None and body.fixed_in != ticket.get('fixed_in_id', ''):
+        if body.fixed_in:
+            rel = await pdb.platform_releases.find_one({'id': body.fixed_in})
+            if not rel:
+                raise HTTPException(422, 'Choose a release from the list.')
+            changes.update({'fixed_in_id': rel['id'], 'fixed_in': rel['version']})
+            notes.append(system_note(f"Marked as fixed in {rel['version']}: {rel['title']}", user))
+        else:
+            changes.update({'fixed_in_id': '', 'fixed_in': ''})
+            notes.append(system_note('Fixed-in release removed', user))
     if not changes:
         raise HTTPException(422, 'Nothing to change.')
     changes['updated_at'] = _iso()
@@ -1718,6 +1786,14 @@ class ActivityBody(BaseModel):
     next_follow_up: Optional[str] = None
     follow_up_note: Optional[str] = None
     distance_km: Optional[float] = Field(default=None, ge=0, le=2000)  # from the previous school visited today (or where the day started)
+    device_latitude: Optional[float] = Field(default=None, ge=-90, le=90)   # where the phone was when the visit was saved (checked against the school's pin)
+    device_longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+
+
+class ReturnBody(BaseModel):
+    date: str = ''
+    distance_km: float = Field(ge=0, le=2000)
+    note: str = ''
 
 
 class DistanceBody(BaseModel):
@@ -1947,7 +2023,7 @@ def lead_detail(lead: dict, today: str, owners: Dict[str, str], gst: float, plan
         'address': lead.get('address', ''), 'board': lead.get('board', ''), 'contacts': lead.get('contacts', []), 'current_system': lead.get('current_system', ''),
         'notes': lead.get('notes', ''), 'expected_close': lead.get('expected_close', ''), 'lost_reason': lead.get('lost_reason', ''), 'won_at': lead.get('won_at', ''),
         'products': lines, 'quote': {'total': total, 'gst_percent': gst, 'total_with_gst': round(total * (1 + gst / 100), 2)},
-        'photos': [{k: p.get(k) for k in ('id', 'caption', 'uploaded_at', 'by', 'by_id', 'width', 'height', 'latitude', 'longitude')} for p in lead.get('photos', [])],
+        'photos': [{k: p.get(k) for k in ('id', 'caption', 'uploaded_at', 'by', 'by_id', 'width', 'height', 'latitude', 'longitude', 'activity_id')} for p in lead.get('photos', [])],
         'activities': sorted(lead.get('activities', []), key=lambda a: (a['date'], a['at']), reverse=True),
     })
     return item
@@ -1970,7 +2046,7 @@ async def load_lead(lead_id: str, user: dict) -> dict:
     return lead
 
 
-def lead_summary(rows: List[dict], today: str, owner_view: bool, owners: Dict[str, str]) -> dict:
+def lead_summary(rows: List[dict], today: str, owner_view: bool, owners: Dict[str, str], returns: Optional[List[dict]] = None) -> dict:
     start = (datetime.strptime(today, '%Y-%m-%d') - timedelta(days=30)).strftime('%Y-%m-%d')
     open_rows = [r for r in rows if r['stage'] in OPEN_STAGES]
     week = (datetime.strptime(today, '%Y-%m-%d') + timedelta(days=7)).strftime('%Y-%m-%d')
@@ -2010,7 +2086,7 @@ def lead_summary(rows: List[dict], today: str, owner_view: bool, owners: Dict[st
                 o['proposals'] += 1
             if r in won:
                 o['won_30d'] += 1
-        for day in build_routes(rows, start, today, '', owners):
+        for day in build_routes(rows, start, today, '', owners, returns):
             if day['owner_id'] in by_owner:
                 by_owner[day['owner_id']]['km_30d'] = round(by_owner[day['owner_id']]['km_30d'] + day['total_km'], 1)
         summary['by_owner'] = sorted(by_owner.values(), key=lambda o: -o['pipeline_value'])
@@ -2024,7 +2100,8 @@ async def list_leads(stage: str = '', owner_id: str = '', plan: str = '', temper
     owner_view = '*' in ROLE_PERMISSIONS.get(user['role'], set())
     today, owners = await lead_context()
     rows = await pdb.platform_leads.find(lead_scope(user)).to_list(10000)
-    summary = lead_summary(rows, today, owner_view, owners)
+    returns = await pdb.platform_returns.find({}).to_list(5000) if owner_view else []
+    summary = lead_summary(rows, today, owner_view, owners, returns)
     week = (datetime.strptime(today, '%Y-%m-%d') + timedelta(days=7)).strftime('%Y-%m-%d')
     needle = q.strip().lower()
 
@@ -2049,9 +2126,9 @@ async def list_leads(stage: str = '', owner_id: str = '', plan: str = '', temper
             return False
         if followup == 'none' and not (is_open and not fu):
             return False
-        if date_from and r['created_at'][:10] < date_from:
+        if date_from and ist_date(r['created_at']) < date_from:
             return False
-        if date_to and r['created_at'][:10] > date_to:
+        if date_to and ist_date(r['created_at']) > date_to:
             return False
         if needle:
             hay = ' '.join([r['school_name'], r.get('city', ''), ' '.join(c['name'] + ' ' + c.get('phone', '') for c in r.get('contacts', []))]).lower()
@@ -2079,7 +2156,7 @@ async def list_leads(stage: str = '', owner_id: str = '', plan: str = '', temper
 
 
 @platform_router.post('/leads')
-async def create_lead(body: LeadBody, request: Request, user: dict = Depends(require_perm('leads:own'))):
+async def create_lead(body: LeadBody, request: Request, user: dict = Depends(require_staff('leads:own', 'Only salespeople add schools and log visits. The owner reviews them.'))):
     values = check_lead_fields(body.model_dump())
     if body.stage in ('Won', 'Lost'):
         raise HTTPException(422, 'A new lead starts as an open lead.')
@@ -2106,14 +2183,33 @@ async def create_lead(body: LeadBody, request: Request, user: dict = Depends(req
     return await lead_view(doc)
 
 
-def build_routes(rows: List[dict], start: str, end: str, owner_filter: str, owners: Dict[str, str]) -> List[dict]:
+AT_SCHOOL_M = 500  # a visit counts as "at the school" when the phone or the photo was within this many metres of the school's pin
+
+
+def visit_proof(lead: dict, photos: List[dict], dev_lat: Optional[float], dev_lng: Optional[float]) -> dict:
+    """Was the salesperson really at the school? Compares the school's pin with where the phone was and where the photo was taken."""
+    pin = (lead.get('latitude'), lead.get('longitude'))
+    device_m = round(haversine_km(pin[0], pin[1], dev_lat, dev_lng) * 1000) if (dev_lat is not None and dev_lng is not None) else None
+    photo_ms = [round(haversine_km(pin[0], pin[1], p['latitude'], p['longitude']) * 1000) for p in photos if p.get('latitude') is not None and p.get('longitude') is not None]
+    photo_m = min(photo_ms) if photo_ms else None
+    measures = [m for m in (device_m, photo_m) if m is not None]
+    if not measures:
+        status = 'Not checked'
+    elif min(measures) <= AT_SCHOOL_M:
+        status = 'At the school'
+    else:
+        status = 'Away from the school'
+    return {'status': status, 'phone_m': device_m, 'photo_m': photo_m}
+
+
+def build_routes(rows: List[dict], start: str, end: str, owner_filter: str, owners: Dict[str, str], returns: Optional[List[dict]] = None) -> List[dict]:
     """One route per salesperson per day: the schools visited in order, and the distance between each pair.
     A distance the salesperson typed wins; otherwise it is estimated in a straight line from the two school locations."""
     stops = []
     for lead in rows:
         for a in lead.get('activities', []):
             if a['type'] in PHYSICAL and start <= a['date'] <= end and (not owner_filter or a['by_id'] == owner_filter):
-                stops.append({'by_id': a['by_id'], 'by': a['by'], 'date': a['date'], 'at': a['at'], 'activity_id': a['id'], 'type': a['type'], 'manual': a.get('distance_km'), 'lead': lead})
+                stops.append({'by_id': a['by_id'], 'by': a['by'], 'date': a['date'], 'at': a['at'], 'activity_id': a['id'], 'type': a['type'], 'manual': a.get('distance_km'), 'proof': a.get('proof'), 'lead': lead})
     stops.sort(key=lambda x: (x['date'], x['by_id'], x['at']))
     days: Dict[tuple, List[dict]] = {}
     for stop in stops:
@@ -2130,13 +2226,25 @@ def build_routes(rows: List[dict], start: str, end: str, owner_filter: str, owne
                 km, source = float(stop['manual']), 'entered'
             elif previous and previous['lead'].get('latitude') is not None and lead.get('latitude') is not None:
                 km, source = round(haversine_km(previous['lead']['latitude'], previous['lead']['longitude'], lead['latitude'], lead['longitude']), 1), 'estimated'
-            out.append({'activity_id': stop['activity_id'], 'lead_id': lead['id'], 'school_name': lead['school_name'], 'city': lead.get('city', ''), 'type': stop['type'],
+            estimate = None
+            if previous and previous['lead'].get('latitude') is not None and lead.get('latitude') is not None:
+                estimate = round(haversine_km(previous['lead']['latitude'], previous['lead']['longitude'], lead['latitude'], lead['longitude']), 1)
+            flag = ''
+            if source == 'entered' and estimate:
+                if km < estimate * 0.9 - 0.5:
+                    flag = 'Shorter than the straight-line distance, which is not possible. Please check.'
+                elif km > estimate * 3 + 5:
+                    flag = 'Much longer than the straight-line distance. Please check.'
+            out.append({'proof': stop.get('proof'), 'estimate_km': estimate, 'flag': flag, 'activity_id': stop['activity_id'], 'lead_id': lead['id'], 'school_name': lead['school_name'], 'city': lead.get('city', ''), 'type': stop['type'],
                         'time': ist_clock(stop['at']), 'latitude': lead.get('latitude'), 'longitude': lead.get('longitude'), 'location_url': lead.get('location_url', ''),
                         'km': km, 'km_source': source, 'first': previous is None})
             previous = stop
         points = [f"{s['latitude']:.6f},{s['longitude']:.6f}" for s in out if s['latitude'] is not None]
+        back = next((r for r in (returns or []) if r['date'] == date and r['owner_id'] == by_id), None)
+        back_km = float(back['km']) if back else 0.0
         result.append({'date': date, 'owner_id': by_id, 'owner_name': owners.get(by_id, group[0]['by']), 'stops': out,
-                       'total_km': round(sum(s['km'] for s in out if s['km'] is not None), 1), 'unknown_legs': len([s for s in out if s['km'] is None and not s['first']]),
+                       'return_trip': {'id': back['id'], 'km': back['km'], 'note': back.get('note', ''), 'at': back.get('at', '')} if back else None,
+                       'total_km': round(sum(s['km'] for s in out if s['km'] is not None) + back_km, 1), 'unknown_legs': len([s for s in out if s['km'] is None]), 'flags': len([s for s in out if s['flag']]), 'away': len([s for s in out if (s.get('proof') or {}).get('status') == 'Away from the school']),
                        'directions_url': ('https://www.google.com/maps/dir/' + '/'.join(points)) if len(points) >= 2 else ''})
     result.sort(key=lambda d: (d['date'], d['owner_name']), reverse=True)
     return result
@@ -2153,30 +2261,88 @@ async def lead_routes(owner_id: str = '', date_from: str = Query('', alias='from
     if (datetime.strptime(end, '%Y-%m-%d') - datetime.strptime(start, '%Y-%m-%d')).days > 92:
         raise HTTPException(422, 'Choose a period of three months or less.')
     rows = await pdb.platform_leads.find(lead_scope(user)).to_list(10000)
-    days = build_routes(rows, start, end, owner_id if owner_view else '', owners)
+    returns = await pdb.platform_returns.find({'date': {'$gte': start, '$lte': end}, **lead_scope(user)}).to_list(5000)
+    days = build_routes(rows, start, end, owner_id if owner_view else '', owners, returns)
     sales_users = [{'id': u['id'], 'name': u['name']} for u in await pdb.platform_users.find({'active': True, 'role': {'$in': ['sales', 'owner']}}).sort('name', 1).to_list(200)] if owner_view else []
+    per: Dict[str, dict] = {}
+    for d in days:
+        row = per.setdefault(d['owner_id'], {'name': d['owner_name'], 'km': 0.0, 'days': 0, 'stops': 0})
+        row['km'] += d['total_km']; row['days'] += 1; row['stops'] += len(d['stops'])
     return {'range': {'from': start, 'to': end}, 'days': days, 'owner_view': owner_view, 'salespeople': sales_users, 'today': today,
             'totals': {'km': round(sum(d['total_km'] for d in days), 1), 'days': len(days), 'stops': sum(len(d['stops']) for d in days),
-                       'unknown_legs': sum(d['unknown_legs'] for d in days)}}
+                       'unknown_legs': sum(d['unknown_legs'] for d in days), 'flags': sum(d['flags'] for d in days)},
+            'by_person': [{'owner_id': k, 'name': v['name'], 'km': round(v['km'], 1), 'days': v['days'], 'stops': v['stops']} for k, v in sorted(per.items(), key=lambda kv: -kv[1]['km'])]}
+
+
+@platform_router.get('/leads/lookup')
+async def lookup_lead(q: str = '', user: dict = Depends(require_perm('leads:own'))):
+    """Is this school already in the pipeline? Used while adding a school, so a school that was visited before is not entered twice.
+    A salesperson also learns when a colleague already has the school, but can open only their own."""
+    q = q.strip()
+    if len(q) < 2:
+        return []
+    owner_view = '*' in ROLE_PERMISSIONS.get(user['role'], set())
+    rows = await pdb.platform_leads.find({'school_name': {'$regex': re.escape(q), '$options': 'i'}}).sort('updated_at', -1).to_list(6)
+    return [{'id': r['id'] if (owner_view or r['owner_id'] == user['id']) else '', 'school_name': r['school_name'], 'city': r.get('city', ''), 'state': r.get('state', ''), 'stage': r['stage'],
+             'owner_name': r.get('owner_name', ''), 'mine': r['owner_id'] == user['id'], 'next_follow_up': r.get('next_follow_up', ''), 'last_activity_at': r.get('last_activity_at', ''),
+             'visits': len([a for a in r.get('activities', []) if a['type'] in PHYSICAL])} for r in rows]
+
+
+@platform_router.post('/trips/return')
+async def log_return_trip(body: ReturnBody, request: Request, user: dict = Depends(require_staff('leads:own', 'Only salespeople add schools and log visits. The owner reviews them.'))):
+    """The trip home (or back to the office) at the end of the day. It is added to that day's kilometres. One per person per day; sending it again replaces it."""
+    today = today_ist()
+    date = valid_date(body.date, 'Date') or today
+    owner_edit = '*' in ROLE_PERMISSIONS.get(user['role'], set())
+    if date > today:
+        raise HTTPException(422, 'The date cannot be in the future.')
+    if not owner_edit and date < (datetime.strptime(today, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d'):
+        raise HTTPException(403, 'You can log the trip home for today or yesterday. Ask the owner for older days.')
+    rows = await pdb.platform_leads.find(lead_scope(user)).to_list(10000)
+    if not any(a['type'] in PHYSICAL and a['date'] == date and a['by_id'] == user['id'] for r in rows for a in r.get('activities', [])):
+        raise HTTPException(422, 'Log at least one school visit for that day first.')
+    km = round(float(body.distance_km), 1)
+    existing = await pdb.platform_returns.find_one({'owner_id': user['id'], 'date': date})
+    doc = {'id': existing['id'] if existing else f'RET-{uuid.uuid4().hex[:8].upper()}', 'owner_id': user['id'], 'owner_name': user['name'], 'date': date, 'km': km, 'note': body.note.strip()[:200], 'at': _stamp()}
+    await pdb.platform_returns.replace_one({'owner_id': user['id'], 'date': date}, doc, upsert=True)
+    await audit(user, 'trip_return', doc['id'], {'date': date, 'from_km': existing['km'] if existing else None, 'to_km': km}, client_ip(request))
+    return {k: doc[k] for k in ('id', 'date', 'km', 'note', 'at')}
+
+
+@platform_router.delete('/trips/return/{return_id}')
+async def delete_return_trip(return_id: str, request: Request, user: dict = Depends(require_perm('leads:own'))):
+    row = await pdb.platform_returns.find_one({'id': return_id, **lead_scope(user)})
+    if not row:
+        raise HTTPException(404, 'Not found.')
+    if '*' not in ROLE_PERMISSIONS.get(user['role'], set()) and row['date'] != today_ist():
+        raise HTTPException(403, 'Only the owner can remove an earlier day.')
+    await pdb.platform_returns.delete_one({'id': return_id})
+    await audit(user, 'trip_return_deleted', return_id, {'date': row['date'], 'km': row['km']}, client_ip(request))
+    return {'ok': True}
 
 
 @platform_router.put('/leads/{lead_id}/activities/{activity_id}/distance')
 async def set_activity_distance(lead_id: str, activity_id: str, body: DistanceBody, request: Request, user: dict = Depends(require_perm('leads:own'))):
-    """Type or correct the distance from the previous school (leave it empty to go back to the map estimate)."""
+    """Correct the distance from the previous school. A salesperson can do this only on the day of the visit; the owner any time. Every change is kept in the audit log."""
     lead = await load_lead(lead_id, user)
     activity = next((a for a in lead.get('activities', []) if a['id'] == activity_id and a['type'] in PHYSICAL), None)
     if not activity:
         raise HTTPException(404, 'Visit not found.')
     if activity.get('by_id') != user['id'] and '*' not in ROLE_PERMISSIONS.get(user['role'], set()):
         raise HTTPException(403, 'You can only change the distance of your own visits.')
-    value = None if body.distance_km is None else round(float(body.distance_km), 1)
+    if body.distance_km is None:
+        raise HTTPException(422, 'Enter the distance in km.')
+    owner_edit = '*' in ROLE_PERMISSIONS.get(user['role'], set())
+    if not owner_edit and activity['date'] != today_ist():
+        raise HTTPException(403, 'Distances can only be corrected on the day of the visit. Ask the owner to change it.')
+    value = round(float(body.distance_km), 1)
     await pdb.platform_leads.update_one({'id': lead_id, 'activities.id': activity_id}, {'$set': {'activities.$.distance_km': value, 'updated_at': _iso()}})
-    await audit(user, 'lead_distance', lead_id, {'activity': activity_id, 'km': value}, client_ip(request))
+    await audit(user, 'lead_distance', lead_id, {'activity': activity_id, 'from_km': activity.get('distance_km'), 'to_km': value}, client_ip(request))
     return await get_lead(lead_id, user)
 
 
 @platform_router.post('/leads/{lead_id}/photos')
-async def upload_lead_photo(lead_id: str, request: Request, file: UploadFile = File(...), caption: str = Form(''), user: dict = Depends(require_perm('leads:own'))):
+async def upload_lead_photo(lead_id: str, request: Request, file: UploadFile = File(...), caption: str = Form(''), user: dict = Depends(require_staff('leads:own', 'Only salespeople add schools and log visits. The owner reviews them.'))):
     """A photo taken at the school. It is checked, straightened, shrunk and kept in a private folder; only signed-in staff can open it."""
     lead = await load_lead(lead_id, user)
     if len(lead.get('photos', [])) >= MAX_PHOTOS_PER_LEAD:
@@ -2224,8 +2390,11 @@ async def delete_lead_photo(lead_id: str, photo_id: str, request: Request, user:
     photo = next((p for p in lead.get('photos', []) if p['id'] == photo_id), None)
     if not photo:
         raise HTTPException(404, 'Photo not found.')
-    if photo.get('by_id') != user['id'] and '*' not in ROLE_PERMISSIONS.get(user['role'], set()):
+    owner_edit = '*' in ROLE_PERMISSIONS.get(user['role'], set())
+    if photo.get('by_id') != user['id'] and not owner_edit:
         raise HTTPException(403, 'You can only delete photos you added.')
+    if photo.get('activity_id') and not owner_edit:
+        raise HTTPException(403, 'This photo is the proof of a visit, so only the owner can delete it.')
     await pdb.platform_leads.update_one({'id': lead_id}, {'$pull': {'photos': {'id': photo_id}}, '$set': {'updated_at': _iso()}})
     for name in (f'{photo_id}.jpg', f'{photo_id}_t.jpg'):
         try:
@@ -2292,7 +2461,7 @@ async def update_lead(lead_id: str, body: LeadUpdate, request: Request, user: di
 
 
 @platform_router.post('/leads/{lead_id}/activities')
-async def add_lead_activity(lead_id: str, body: ActivityBody, request: Request, user: dict = Depends(require_perm('leads:own'))):
+async def add_lead_activity(lead_id: str, body: ActivityBody, request: Request, user: dict = Depends(require_staff('leads:own', 'Only salespeople add schools and log visits. The owner reviews them.'))):
     lead = await load_lead(lead_id, user)
     if body.type not in ACTIVITY_TYPES:
         raise HTTPException(422, 'Choose what kind of contact it was.')
@@ -2303,15 +2472,37 @@ async def add_lead_activity(lead_id: str, body: ActivityBody, request: Request, 
     date = valid_date(body.date, 'Date') or today
     if date > today:
         raise HTTPException(422, 'The date cannot be in the future. Use the follow-up date for what comes next.')
+    # Rules for the sales team: every entry says what happened and when to follow up; every visit proves where (map pin),
+    # that the person was there (a new photo) and how far they travelled (travel allowance is paid on these km).
+    closed = lead['stage'] in ('Won', 'Lost')
+    follow_date = valid_date(body.next_follow_up or '', 'Follow-up date')
+    follow_note = (body.follow_up_note or '').strip()
+    if not closed:
+        if not follow_date:
+            raise HTTPException(422, 'Choose the next follow-up date.')
+        if len(follow_note) < 3:
+            raise HTTPException(422, 'Write what to do at the follow-up.')
+    claim = False
+    if body.type in PHYSICAL:
+        if lead.get('latitude') is None:
+            raise HTTPException(422, "Add the school's location first (a full Google Maps link, or use your current location).")
+        if body.distance_km is None:
+            raise HTTPException(422, 'Enter the km travelled from the previous school you visited today, or from where you started the day.')
+        fresh = [ph for ph in lead.get('photos', []) if ph.get('by_id') == user['id'] and not ph.get('activity_id')]
+        if not fresh:
+            raise HTTPException(422, 'Add a photo taken at the school for this visit.')
+        claim = True
+        proof = visit_proof(lead, fresh, body.device_latitude, body.device_longitude)
     entry = {'id': f'ACT-{uuid.uuid4().hex[:8].upper()}', 'at': _stamp(), 'date': date, 'type': body.type, 'met_name': body.met_name.strip()[:80],
              'met_designation': body.met_designation.strip()[:80], 'summary': summary, 'outcome': body.outcome.strip()[:500], 'by': user['name'], 'by_id': user['id'],
              'distance_km': round(float(body.distance_km), 1) if (body.distance_km is not None and body.type in PHYSICAL) else None}
+    if body.type in PHYSICAL:
+        entry['proof'] = proof
     changes: Dict[str, Any] = {'last_activity_at': entry['at'], 'updated_at': entry['at']}
     system: List[dict] = []
-    if body.next_follow_up is not None:
-        changes['next_follow_up'] = valid_date(body.next_follow_up, 'Follow-up date')
-        if body.follow_up_note is not None:
-            changes['follow_up_note'] = body.follow_up_note.strip()[:300]
+    if follow_date:
+        changes['next_follow_up'] = follow_date
+        changes['follow_up_note'] = follow_note[:300]
     new_stage = lead['stage']
     if lead['stage'] == 'New lead' and body.type in ('Visit', 'Meeting', 'Demo'):
         new_stage = 'Demo done' if body.type == 'Demo' else 'Visited'
@@ -2322,7 +2513,10 @@ async def add_lead_activity(lead_id: str, body: ActivityBody, request: Request, 
         stage_line = lead_system_entry(f"Stage: {lead['stage']} → {new_stage}", user)
         stage_line.update({'at': entry['at'], 'date': entry['date']})  # sits right after the visit that caused it
         system.append(stage_line)
-    await pdb.platform_leads.update_one({'id': lead_id}, {'$set': changes, '$push': {'activities': {'$each': [entry] + system}}})
+    if claim:
+        changes['photos.$[p].activity_id'] = entry['id']
+    await pdb.platform_leads.update_one({'id': lead_id}, {'$set': changes, '$push': {'activities': {'$each': [entry] + system}}},
+                                        array_filters=[{'p.by_id': user['id'], 'p.activity_id': {'$exists': False}}] if claim else None)
     await audit(user, 'lead_activity', lead_id, {'type': body.type, 'met': entry['met_name']}, client_ip(request))
     return await get_lead(lead_id, user)
 
