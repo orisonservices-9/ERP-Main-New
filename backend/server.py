@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, UploadFile, File, Form
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
@@ -649,7 +649,7 @@ async def notification_rule_enabled(rule_key: str, branch_id: str = 'BR-MAIN') -
 
 # ---------------- Auth routes ----------------
 @api_router.post("/auth/login")
-async def login(req: LoginReq):
+async def login(req: LoginReq, http_request: Request):
     role = req.role
     if role not in ROLE_CONFIG:
         raise HTTPException(status_code=400, detail="Unknown role")
@@ -657,7 +657,7 @@ async def login(req: LoginReq):
     branch_ids = await get_role_branch_ids(role)
     default_branch_id = 'BR-MAIN' if '*' in branch_ids else branch_ids[0]
     default_branch = await db.branches.find_one({'id': default_branch_id}) or {'id': default_branch_id, 'name': 'Orison Main Campus' if default_branch_id == 'BR-MAIN' else default_branch_id}
-    return {
+    result = {
         'token': create_token(role, branch_ids=branch_ids),
         'role': role,
         'name': cfg['name'],
@@ -665,6 +665,9 @@ async def login(req: LoginReq):
         'branch_ids': branch_ids,
         'default_branch': {'id': default_branch_id, 'name': default_branch.get('name', default_branch_id), 'code': default_branch.get('code', '')},
     }
+    # Report the sign-in to the platform admin (who, when, web or app). Never affects the login itself.
+    await track_login(role, http_request.headers.get('x-client') or 'web', role, cfg['name'], http_request.client.host if http_request.client else '')
+    return result
 
 @api_router.get("/auth/me")
 async def me(role: str = Depends(get_current)):
@@ -5200,6 +5203,7 @@ async def ensure_indexes():
 @app.on_event("startup")
 async def startup():
     await ensure_indexes()
+    await platform_startup()
     await seed()
 
 @api_router.get("/")
@@ -6667,7 +6671,7 @@ async def request_parent_otp(request: ParentOtpRequest):
     return response
 
 @api_router.post('/parent/auth/verify-otp')
-async def verify_parent_otp(request: ParentOtpVerify):
+async def verify_parent_otp(request: ParentOtpVerify, http_request: Request):
     mobile = normalize_mobile(request.mobile)
     session = await db.parent_otp_sessions.find_one({'mobile': mobile, 'used': False}, sort=[('created', -1)])
     if not session:
@@ -6699,6 +6703,7 @@ async def verify_parent_otp(request: ParentOtpVerify):
     }
     await db.parent_accounts.update_one({'id': parent_id}, {'$set': parent}, upsert=True)
     token = create_token('parent', parent_id=parent_id)
+    await track_login('parent', 'parent-app', parent_id, parent.get('name', ''), http_request.client.host if http_request.client else '')
     return {'token': token, 'parent': parent, 'students': students}
 
 @api_router.get('/parent/me')
@@ -7080,8 +7085,10 @@ async def submit_parent_help_request(student_id: str, request: dict, payload: di
     }
     if not record['description']:
         raise HTTPException(status_code=422, detail='Describe the concern or app problem.')
-    await db.help_requests.insert_one(record)
+    await db.help_requests.insert_one(record.copy())  # a copy: insert_one adds a database _id that cannot be sent back to the app
     await add_event('info', 'New parent support request', f"{record['kind']} received from {record['parent_name']}.")
+    if kind == 'App support':
+        await create_parent_ticket(record, student)  # also reaches the Orison support team; never blocks the parent
     return record
 
 @api_router.post('/parent/uploads/{category}')
@@ -7451,6 +7458,23 @@ async def enforce_branch_boundary(request, call_next):
     return await call_next(request)
 
 app.include_router(api_router)
+
+# Orison owner ("super admin") API: separate accounts, token and database. See platform_admin.py.
+from platform_admin import platform_router, support_router, platform_startup, track_login, track_request, create_parent_ticket
+app.include_router(platform_router)
+app.include_router(support_router)
+
+
+@app.middleware('http')
+async def usage_tracking(request, call_next):
+    """Count which features signed-in people use, for the platform admin. Runs after the response, never blocks it."""
+    response = await call_next(request)
+    try:
+        asyncio.create_task(track_request(request.url.path, response.status_code, request.headers.get('authorization'), request.headers.get('x-client')))
+    except Exception:
+        pass
+    return response
+
 
 from fastapi import Request as _Request
 

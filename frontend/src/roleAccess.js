@@ -5,6 +5,7 @@ export const ROLE_ACCESS = {
   admin: '*',
   director: {
     dashboard: ['/dashboard'],
+    support: ['/support'],
     admissions: ['/admissions/reports'],
     academics: [
       '/academics/action-center', '/academics/student-health',
@@ -29,6 +30,7 @@ export const ROLE_ACCESS = {
   },
   academic_coordinator: {
     dashboard: ['/dashboard'],
+    support: ['/support'],
     academics: [
       '/academics/action-center', '/academics/syllabus', '/academics/student-health',
       '/academics/support-plans', '/academics/classroom-observations',
@@ -45,6 +47,7 @@ export const ROLE_ACCESS = {
   },
   fee_manager: {
     dashboard: ['/dashboard'],
+    support: ['/support'],
     fee: [
       '/fee/create', '/fee/collect', '/fee/collections', '/fee/control-center',
       '/fee/receipts', '/fee/payment-verification',
@@ -56,6 +59,7 @@ export const ROLE_ACCESS = {
   },
   teacher: {
     dashboard: ['/dashboard'],
+    support: ['/support'],
     attendance: ['/attendance/add', '/attendance/view'],
     marks: ['/marks/add', '/marks/results', '/marks/report-card'],
     homework: ['/homework/add', '/homework/reports'],
@@ -66,6 +70,7 @@ export const ROLE_ACCESS = {
   },
   stock_manager: {
     dashboard: ['/dashboard'],
+    support: ['/support'],
     inventory: [
       '/inventory', '/inventory/purchase', '/inventory/parent-issue', '/inventory/register',
       '/inventory/movement', '/inventory/reports',
@@ -74,6 +79,7 @@ export const ROLE_ACCESS = {
   },
   librarian: {
     dashboard: ['/dashboard'],
+    support: ['/support'],
     library: ['/library', '/library/issues'],
     notifications: ['/notifications'],
   },
