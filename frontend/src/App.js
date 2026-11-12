@@ -39,6 +39,8 @@ import ParentAppCenter from './pages/ParentAppCenter';
 import { LibraryCatalogue, LibraryIssues, Hostel, Certificates, IdCards, Compliance, ConsentForms, EventsGallery, Surveys } from './pages/modules/SchoolServices';
 import { canAccessPath, firstRolePath } from './roleAccess';
 import { FeedbackHost } from './components/AppFeedback';
+import PlatformApp from './platform/PlatformApp';
+import SupportDesk from './pages/SupportDesk';
 
 const AccessDenied = () => (
   <Layout>
@@ -72,6 +74,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/platform/*" element={<PlatformApp />} />
       <Route path="/visitor-pass/:token" element={<PublicVisitorPass />} />
       <Route path="/admission-experience/:token" element={<PublicAdmissionExperience />} />
       <Route path="/dashboard" element={P(<Dashboard />, 'dashboard')} />
@@ -179,6 +182,7 @@ function AppRoutes() {
       <Route path="/hostel" element={P(<Hostel />, 'hostel')} />
       <Route path="/events" element={P(<EventsGallery />, 'events')} />
       <Route path="/surveys" element={P(<Surveys />, 'surveys')} />
+      <Route path="/support" element={P(<SupportDesk />, 'support')} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

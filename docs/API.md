@@ -167,3 +167,27 @@ Menu keys per role are defined in `server.py` → `ROLE_CONFIG`. The **frontend*
 routes and Parent App Control Center endpoints also enforce staff roles on the backend.
 Older general ERP endpoints still need a broader RBAC pass before an internet-facing
 production launch.
+
+
+## Help desk (support tickets to the Orison team)
+
+Every login can ask Orison for help or report an error, in every plan. Tickets are handled in the platform admin by
+Orison support and developers (Developer login: tickets only).
+
+**School staff logins** (web, teacher app, director app). Send the usual `Authorization: Bearer <staff token>` and, from the
+mobile apps, `X-Client: teacher-app | director-app` and optionally `X-App-Version: 1.4.2`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/support/meta` | Form options: ticket types, categories, priorities, the school's features, help desk hours |
+| POST | `/api/support/tickets` | Raise a ticket: `{type, category, feature, subject, description, error_details, page, priority, app_version}` |
+| GET | `/api/support/tickets` | The caller's tickets (Admin and Director see all staff tickets) with `counts: {active, waiting, resolved}` |
+| GET | `/api/support/tickets/{id}` | One ticket with the replies (internal notes are never returned) |
+| POST | `/api/support/tickets/{id}/reply` | Reply to Orison: `{text}` |
+
+`type` is `Help needed`, `Error / bug` or `Suggestion`; `priority` is `Low`, `Normal` or `Urgent`; status is `New`,
+`In progress`, `Waiting for school`, `Resolved` or `Closed`. At most 15 tickets per hour per login.
+
+**Parents** keep using `POST /api/parent/students/{id}/help-requests`. A request with `kind: "App support"` is now also sent to
+the Orison team as a ticket (a `School callback` stays with the school). When Orison replies or resolves it, the parent's own
+request shows the new status and the answer in `resolution`.

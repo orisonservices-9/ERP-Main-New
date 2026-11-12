@@ -91,3 +91,6 @@ credentials.json
 .credentials
 frontend/node_modules/.cache/default-development/0.pack
 _claude_backup_2026-11-11/
+
+# photos taken by the sales team (private, never commit)
+backend/private_uploads/

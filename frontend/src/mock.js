@@ -4,7 +4,7 @@ import {
   Wallet, FileText, ClipboardList, BookOpen, CalendarDays, Boxes, Receipt,
   Bell, Bus, MessageSquare, UserCheck, HelpCircle, BadgeDollarSign,
   Fingerprint, Building2, Settings, TicketCheck, Smartphone, Library, BedDouble, Award,
-  IdCard, Landmark, Images, ListChecks, MessageSquareHeart
+  IdCard, Landmark, Images, ListChecks, MessageSquareHeart, LifeBuoy
 } from 'lucide-react';
 
 // Sidebar navigation config
@@ -181,6 +181,7 @@ export const NAV_ITEMS = [
   { key: 'events', label: 'Events & Gallery', icon: Images, path: '/events' },
   { key: 'surveys', label: 'Surveys & Feedback', icon: MessageSquareHeart, path: '/surveys' },
   { key: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
+  { key: 'support', label: 'Help Desk', icon: LifeBuoy, path: '/support' },
 ];
 
 // Current student for profile pages
