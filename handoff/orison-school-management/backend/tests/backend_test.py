@@ -54,7 +54,7 @@ def test_create_student_missing_fields_422(h):
 
 
 def test_create_student_success_and_persist_and_duplicate_and_cleanup(h):
-    adm = f"TEST-{uuid.uuid4().hex[:8].upper()}"
+    adm = f"TEST-{uuid.uuid4( ).hex[:8].upper()}"
     payload = {
         "name": "TEST_Student One", "admission_no": adm, "class_name": "Grade 10",
         "section": "Section A", "academic_year": "2024-2025", "gender": "Male",

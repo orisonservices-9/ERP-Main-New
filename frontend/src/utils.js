@@ -20,3 +20,13 @@ export const downloadCSV = (filename, headers, rows) => {
 };
 
 export const printPage = () => window.print();
+
+export const isActiveStudentOn = (student, targetDate = '') => {
+  const activeStatuses = new Set(['', 'active', 'enrolled', 'admitted']);
+  if (!activeStatuses.has(String(student?.status || '').trim().toLowerCase())) return false;
+  const joined = String(student?.admission_date || student?.joining_date || student?.joined_on || '').slice(0, 10);
+  const left = String(student?.exit_date || student?.withdrawal_date || student?.transfer_date || '').slice(0, 10);
+  if (targetDate && joined && joined > targetDate) return false;
+  if (targetDate && left && left < targetDate) return false;
+  return true;
+};

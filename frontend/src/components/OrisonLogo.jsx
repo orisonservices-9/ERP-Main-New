@@ -3,8 +3,8 @@ import React from 'react';
 // Recreated stylized Orison wordmark
 const OrisonLogo = ({ size = 'md' }) => {
   const sizes = {
-    sm: { main: 'text-[22px]', sub: 'text-[7px]' },
-    md: { main: 'text-[34px]', sub: 'text-[10px]' },
+    sm: { main: 'text-[22px]', sub: 'text-[12px]' },
+    md: { main: 'text-[34px]', sub: 'text-[12px]' },
     lg: { main: 'text-[52px]', sub: 'text-[14px]' },
   };
   const s = sizes[size] || sizes.md;

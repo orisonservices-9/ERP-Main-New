@@ -3,6 +3,11 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "@/index.css";
 import App from "@/App";
+import { initTheme } from "@/theme";
+import { getLang } from "@/i18n";
+
+initTheme();
+document.documentElement.lang = getLang();
 
 const queryClient = new QueryClient({
   defaultOptions: {

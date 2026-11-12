@@ -1,11 +1,11 @@
 // Extended mock data for all Orison modules
 export const TEACHERS = [
-  { id: 'TCH-001', name: 'Dr. Anita Rao', subject: 'Physics', classes: 'Grade 11, 12', phone: '+91 98765 10001', status: 'Active', avatar: 'https://i.pravatar.cc/80?img=32' },
-  { id: 'TCH-002', name: 'Vikram Nair', subject: 'Mathematics', classes: 'Grade 9, 10', phone: '+91 98765 10002', status: 'Active', avatar: 'https://i.pravatar.cc/80?img=12' },
-  { id: 'TCH-003', name: 'Sneha Kapoor', subject: 'English', classes: 'Grade 6, 7, 8', phone: '+91 98765 10003', status: 'On Leave', avatar: 'https://i.pravatar.cc/80?img=45' },
-  { id: 'TCH-004', name: 'Rahul Menon', subject: 'Chemistry', classes: 'Grade 11', phone: '+91 98765 10004', status: 'Active', avatar: 'https://i.pravatar.cc/80?img=15' },
-  { id: 'TCH-005', name: 'Priya Das', subject: 'Biology', classes: 'Grade 10, 12', phone: '+91 98765 10005', status: 'Active', avatar: 'https://i.pravatar.cc/80?img=47' },
-  { id: 'TCH-006', name: 'Arjun Sethi', subject: 'Computer Science', classes: 'Grade 8, 9', phone: '+91 98765 10006', status: 'Active', avatar: 'https://i.pravatar.cc/80?img=13' },
+  { id: 'TCH-001', name: 'Dr. Anita Rao', subject: 'Physics', classes: 'Class 11, 12', phone: '+91 98765 10001', status: 'Active', avatar: 'https://i.pravatar.cc/80?img=32' },
+  { id: 'TCH-002', name: 'Vikram Nair', subject: 'Mathematics', classes: 'Class 9, 10', phone: '+91 98765 10002', status: 'Active', avatar: 'https://i.pravatar.cc/80?img=12' },
+  { id: 'TCH-003', name: 'Sneha Kapoor', subject: 'English', classes: 'Class 6, 7, 8', phone: '+91 98765 10003', status: 'On Leave', avatar: 'https://i.pravatar.cc/80?img=45' },
+  { id: 'TCH-004', name: 'Rahul Menon', subject: 'Chemistry', classes: 'Class 11', phone: '+91 98765 10004', status: 'Active', avatar: 'https://i.pravatar.cc/80?img=15' },
+  { id: 'TCH-005', name: 'Priya Das', subject: 'Biology', classes: 'Class 10, 12', phone: '+91 98765 10005', status: 'Active', avatar: 'https://i.pravatar.cc/80?img=47' },
+  { id: 'TCH-006', name: 'Arjun Sethi', subject: 'Computer Science', classes: 'Class 8, 9', phone: '+91 98765 10006', status: 'Active', avatar: 'https://i.pravatar.cc/80?img=13' },
 ];
 
 export const STAFF = [
@@ -17,25 +17,25 @@ export const STAFF = [
 ];
 
 export const EXAMS = [
-  { title: 'Mid-Term 2025', class: 'Grade 10-A', subject: 'Mathematics', date: 'Aug 12, 2025', room: 'Hall B2', status: 'Scheduled' },
-  { title: 'Unit Test 3', class: 'Grade 9-B', subject: 'Science', date: 'Aug 18, 2025', room: 'Room 204', status: 'Scheduled' },
-  { title: 'First Semester Final', class: 'Grade 11-B', subject: 'Physics', date: 'Sep 02, 2025', room: 'Auditorium', status: 'Draft' },
-  { title: 'Weekly Quiz', class: 'Grade 8-A', subject: 'English', date: 'Aug 08, 2025', room: 'Room 101', status: 'Completed' },
+  { title: 'Mid-Term 2025', class: 'Class 10-A', subject: 'Mathematics', date: 'Aug 12, 2025', room: 'Hall B2', status: 'Scheduled' },
+  { title: 'Unit Test 3', class: 'Class 9-B', subject: 'Science', date: 'Aug 18, 2025', room: 'Room 204', status: 'Scheduled' },
+  { title: 'First Semester Final', class: 'Class 11-B', subject: 'Physics', date: 'Sep 02, 2025', room: 'Auditorium', status: 'Draft' },
+  { title: 'Weekly Quiz', class: 'Class 8-A', subject: 'English', date: 'Aug 08, 2025', room: 'Room 101', status: 'Completed' },
 ];
 
 export const RESULTS = [
-  { roll: '#102401', name: 'Benjamin Thorne', total: 456, percent: 91.2, grade: 'A+', rank: 1 },
-  { roll: '#102402', name: 'Sophia Martinez', total: 421, percent: 84.2, grade: 'A', rank: 3 },
-  { roll: '#102403', name: 'Elara Vance', total: 438, percent: 87.6, grade: 'A', rank: 2 },
-  { roll: '#102404', name: 'Marcus Thorne', total: 402, percent: 80.4, grade: 'A', rank: 5 },
+  { roll: '#102401', name: 'Rohan Reddy', total: 456, percent: 91.2, grade: 'A+', rank: 1 },
+  { roll: '#102402', name: 'Ananya Iyer', total: 421, percent: 84.2, grade: 'A', rank: 3 },
+  { roll: '#102403', name: 'Diya Patel', total: 438, percent: 87.6, grade: 'A', rank: 2 },
+  { roll: '#102404', name: 'Arjun Reddy', total: 402, percent: 80.4, grade: 'A', rank: 5 },
   { roll: '#102405', name: 'Aarav Sharma', total: 410, percent: 82.0, grade: 'A', rank: 4 },
 ];
 
 export const HOMEWORK = [
-  { subject: 'Mathematics', title: 'Algebra Worksheet 4', class: 'Grade 10-A', due: 'Aug 10, 2025', assigned: 42, submitted: 30, status: 'Active' },
-  { subject: 'Science', title: 'Chapter 6 Notes', class: 'Grade 9-B', due: 'Aug 09, 2025', assigned: 38, submitted: 38, status: 'Closed' },
-  { subject: 'English', title: 'Essay: My Hero', class: 'Grade 8-A', due: 'Aug 12, 2025', assigned: 40, submitted: 12, status: 'Active' },
-  { subject: 'History', title: 'Timeline Project', class: 'Grade 7-C', due: 'Aug 15, 2025', assigned: 36, submitted: 5, status: 'Active' },
+  { subject: 'Mathematics', title: 'Algebra Worksheet 4', class: 'Class 10-A', due: 'Aug 10, 2025', assigned: 42, submitted: 30, status: 'Active' },
+  { subject: 'Science', title: 'Chapter 6 Notes', class: 'Class 9-B', due: 'Aug 09, 2025', assigned: 38, submitted: 38, status: 'Closed' },
+  { subject: 'English', title: 'Essay: My Hero', class: 'Class 8-A', due: 'Aug 12, 2025', assigned: 40, submitted: 12, status: 'Active' },
+  { subject: 'History', title: 'Timeline Project', class: 'Class 7-C', due: 'Aug 15, 2025', assigned: 36, submitted: 5, status: 'Active' },
 ];
 
 export const TIMETABLE = {
@@ -71,7 +71,7 @@ export const EXPENSES = [
 export const NOTIFICATIONS = [
   { title: 'New admission approved', body: 'Aarav Sharma has been enrolled in Class 10-B.', time: '10 min ago', type: 'success', unread: true },
   { title: 'Fee payment overdue', body: '3 students have pending Quarter 2 tuition dues.', time: '1 hour ago', type: 'warning', unread: true },
-  { title: 'Exam scheduled', body: 'Mid-Term 2025 for Grade 10-A on Aug 12.', time: '3 hours ago', type: 'info', unread: false },
+  { title: 'Exam scheduled', body: 'Mid-Term 2025 for Class 10-A on Aug 12.', time: '3 hours ago', type: 'info', unread: false },
   { title: 'Leave request', body: 'Robert Fox requested sick leave (12-14 Oct).', time: 'Yesterday', type: 'info', unread: false },
   { title: 'Inventory alert', body: 'A4 Paper Reams are out of stock.', time: '2 days ago', type: 'warning', unread: false },
 ];
@@ -120,15 +120,15 @@ export const BRANCHES = [
 ];
 
 export const CONVERSATIONS = [
-  { name: 'Grade 10-B Parents Group', last: 'Reminder: PTM this Saturday at 10 AM.', time: '09:20', unread: 2, avatar: 'https://i.pravatar.cc/80?img=5' },
+  { name: 'Class 10-B Parents Group', last: 'Reminder: PTM this Saturday at 10 AM.', time: '09:20', unread: 2, avatar: 'https://i.pravatar.cc/80?img=5' },
   { name: 'Staff Announcements', last: 'Holiday declared on Aug 15.', time: 'Yesterday', unread: 0, avatar: 'https://i.pravatar.cc/80?img=7' },
   { name: 'Vikram Nair (Maths)', last: 'Shared the revised test schedule.', time: 'Mon', unread: 1, avatar: 'https://i.pravatar.cc/80?img=12' },
   { name: 'Transport Coordinators', last: 'Route 04 under maintenance today.', time: 'Sun', unread: 0, avatar: 'https://i.pravatar.cc/80?img=8' },
 ];
 
 export const PROMOTE_STUDENTS = [
-  { roll: '01', name: 'Marcus Thorne', current: 'Grade 10-B', result: 'Pass', percent: '91%', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=80&h=80&fit=crop&crop=faces' },
-  { roll: '02', name: 'Sophia Martinez', current: 'Grade 10-B', result: 'Pass', percent: '84%', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&h=80&fit=crop&crop=faces' },
-  { roll: '03', name: 'Elara Vance', current: 'Grade 10-B', result: 'Pass', percent: '88%', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop&crop=faces' },
-  { roll: '04', name: 'Benjamin Thorne', current: 'Grade 10-B', result: 'Detained', percent: '38%', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop&crop=faces' },
+  { roll: '01', name: 'Arjun Reddy', current: 'Class 10-B', result: 'Pass', percent: '91%', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=80&h=80&fit=crop&crop=faces' },
+  { roll: '02', name: 'Ananya Iyer', current: 'Class 10-B', result: 'Pass', percent: '84%', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&h=80&fit=crop&crop=faces' },
+  { roll: '03', name: 'Diya Patel', current: 'Class 10-B', result: 'Pass', percent: '88%', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop&crop=faces' },
+  { roll: '04', name: 'Rohan Reddy', current: 'Class 10-B', result: 'Detained', percent: '38%', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop&crop=faces' },
 ];

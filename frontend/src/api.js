@@ -16,6 +16,7 @@ const announceApiStatus = (status, detail = '') => {
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('orison_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  config.headers['X-Branch-ID'] = localStorage.getItem('orison_branch_id') || 'BR-MAIN';
   return config;
 });
 

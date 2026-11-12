@@ -7,6 +7,7 @@ pydantic>=2.6.4
 python-dotenv>=1.0.1
 pyjwt>=2.10.1
 python-multipart>=0.0.9
+reportlab==4.2.5
 
 # ==== Test dependencies ====
 pytest>=8.0.0

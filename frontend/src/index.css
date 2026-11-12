@@ -84,3 +84,99 @@ main > div:last-child > * { animation: premium-rise 280ms ease-out both; }
   * { @apply border-border; }
   body { @apply bg-background text-foreground; }
 }
+
+
+/* ---------- Dark mode (see src/theme.js) ---------- */
+/* The filter sits on <html> (the root) so fixed menus, dialogs and toasts keep working. */
+html.orison-dark { filter: invert(0.92) hue-rotate(180deg); background: #ffffff; }
+html.orison-dark img, html.orison-dark video, html.orison-dark canvas, html.orison-dark iframe,
+html.orison-dark [data-keep-colors] { filter: invert(1) hue-rotate(180deg); }
+@media print { html.orison-dark, html.orison-dark img { filter: none !important; } }
+
+/* Regional scripts: Telugu and Hindi fonts with English fallback */
+html[lang="te"] body { font-family: 'Inter', 'Noto Sans Telugu', system-ui, sans-serif; }
+html[lang="hi"] body { font-family: 'Inter', 'Noto Sans Devanagari', system-ui, sans-serif; }
+
+/* Tables: keep the first and last columns off the card edge when a screen did not set its own padding */
+table :is(th, td):first-child:not([class*="px-"]):not([class*="pl-"]) { padding-left: 1.5rem; }
+table :is(th, td):last-child:not([class*="px-"]):not([class*="pr-"]) { padding-right: 1.5rem; }
+table tbody tr { transition: background-color .15s; }
+table tbody tr:hover { background-color: rgba(238, 242, 255, 0.45); }
+/* Buttons placed on the indigo page banner */
+.orison-hero-actions button:not([class*="from-"]) { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.2); }
+.orison-hero-actions button:not([class*="from-"]):hover { background: rgba(255,255,255,.18); color: #fff; }
+.orison-hero-actions button[class*="from-"] { background-image: none; background: #fff; color: #4338CA; }
+
+/* ---------- Warm sidebar (same palette as the login screen) ----------
+   Applied only on the Admin dashboard for now (see Layout.jsx `warmTheme`). The main area keeps its normal look.
+   Paper #F4F1EA · line #E2DDD1 · ink #1F2433 · muted #5B6070 · indigo #2E2A6E */
+.orison-warm [data-ui="sidebar"] { background: #F4F1EA !important; background-image: none !important; box-shadow: none !important; border-right: 1px solid #E2DDD1; }
+.orison-warm [data-ui="glow"] { display: none; }
+.orison-warm [data-ui="sidebar"] [class*="text-white"] { color: #4A4F5C !important; }
+.orison-warm [data-ui="sidebar"] :is([class^="bg-white/"], [class*=" bg-white/"]) { background-color: rgba(31,36,51,0.05) !important; }
+.orison-warm [data-ui="sidebar"] :is([class^="border-white/"], [class*=" border-white/"]) { border-color: #E2DDD1 !important; }
+.orison-warm [data-ui="sidebar"] .rounded-2xl.bg-white { box-shadow: none !important; border: 1px solid #E2DDD1; }
+.orison-warm [data-ui="sidebar"] .border-l { border-color: #D9D3C6 !important; }
+.orison-warm [data-ui="sidebar"] button:hover:not([data-ui="nav-active"]) { background-color: rgba(31,36,51,0.05) !important; color: #1F2433 !important; }
+.orison-warm [data-ui="sidebar"] .text-indigo-300 { color: #3F3A8C !important; }
+/* Workspace card and sign-out button sit on white */
+.orison-warm [data-ui="sidebar"] .mt-4.rounded-xl, .orison-warm [data-ui="sidebar"] .relative.space-y-2 > button:last-child { background-color: #FFFFFF !important; }
+.orison-warm [data-ui="sidebar"] .mt-4.rounded-xl p:last-child { color: #1F2433 !important; }
+/* Selected item: the login screen's deep indigo */
+.orison-warm [data-ui="sidebar"] [data-ui="nav-active"] { background: #2E2A6E !important; background-image: none !important; box-shadow: none !important; color: #FFFFFF !important; }
+.orison-warm [data-ui="sidebar"] [data-ui="nav-active"] [class*="text-white"], .orison-warm [data-ui="sidebar"] [data-ui="nav-active"] svg { color: #FFFFFF !important; }
+.orison-warm [data-ui="sidebar"] [data-ui="nav-active"] > span:first-child { background-color: rgba(255,255,255,0.14) !important; }
+.orison-warm [data-ui="sidebar"] [data-ui="nav-child-active"] { color: #2E2A6E !important; font-weight: 600; }
+.orison-warm [data-ui="nav-child-active"]::before { background: #2E2A6E !important; }
+
+/* Serif display face used by the login screen and landing page */
+.font-display { font-family: 'Fraunces', Georgia, 'Times New Roman', serif; }
+
+/* Sidebar icons coloured by meaning (warm sidebar only): soft tint tile + coloured icon; selected item stays white on indigo */
+.orison-warm [data-ui="sidebar"] [data-icon="dashboard"] { --c: #4F46E5; }
+.orison-warm [data-ui="sidebar"] [data-icon="student"] { --c: #2563EB; }
+.orison-warm [data-ui="sidebar"] [data-icon="admissions"] { --c: #0D9488; }
+.orison-warm [data-ui="sidebar"] [data-icon="academics"] { --c: #7C3AED; }
+.orison-warm [data-ui="sidebar"] [data-icon="attendance"] { --c: #16A34A; }
+.orison-warm [data-ui="sidebar"] [data-icon="teachers"] { --c: #0284C7; }
+.orison-warm [data-ui="sidebar"] [data-icon="staff"] { --c: #64748B; }
+.orison-warm [data-ui="sidebar"] [data-icon="fee"] { --c: #059669; }
+.orison-warm [data-ui="sidebar"] [data-icon="collections"] { --c: #D97706; }
+.orison-warm [data-ui="sidebar"] [data-icon="exams"] { --c: #E11D48; }
+.orison-warm [data-ui="sidebar"] [data-icon="marks"] { --c: #EA580C; }
+.orison-warm [data-ui="sidebar"] [data-icon="homework"] { --c: #0891B2; }
+.orison-warm [data-ui="sidebar"] [data-icon="hall_tickets"] { --c: #9333EA; }
+.orison-warm [data-ui="sidebar"] [data-icon="leave"] { --c: #DB2777; }
+.orison-warm [data-ui="sidebar"] [data-icon="timetable"] { --c: #4338CA; }
+.orison-warm [data-ui="sidebar"] [data-icon="inventory"] { --c: #B45309; }
+.orison-warm [data-ui="sidebar"] [data-icon="expenses"] { --c: #DC2626; }
+.orison-warm [data-ui="sidebar"] [data-icon="notifications"] { --c: #F59E0B; }
+.orison-warm [data-ui="sidebar"] [data-icon="transport"] { --c: #CA8A04; }
+.orison-warm [data-ui="sidebar"] [data-icon="communications"] { --c: #2563EB; }
+.orison-warm [data-ui="sidebar"] [data-icon="visitor"] { --c: #0F766E; }
+.orison-warm [data-ui="sidebar"] [data-icon="question"] { --c: #7C3AED; }
+.orison-warm [data-ui="sidebar"] [data-icon="hr"] { --c: #9333EA; }
+.orison-warm [data-ui="sidebar"] [data-icon="biometric"] { --c: #475569; }
+.orison-warm [data-ui="sidebar"] [data-icon="multibranch"] { --c: #4F46E5; }
+.orison-warm [data-ui="sidebar"] [data-icon="parent_center"] { --c: #DB2777; }
+.orison-warm [data-ui="sidebar"] [data-icon="compliance"] { --c: #0F766E; }
+.orison-warm [data-ui="sidebar"] [data-icon="certificates"] { --c: #B45309; }
+.orison-warm [data-ui="sidebar"] [data-icon="idcards"] { --c: #0284C7; }
+.orison-warm [data-ui="sidebar"] [data-icon="consents"] { --c: #16A34A; }
+.orison-warm [data-ui="sidebar"] [data-icon="library"] { --c: #92400E; }
+.orison-warm [data-ui="sidebar"] [data-icon="hostel"] { --c: #7C2D12; }
+.orison-warm [data-ui="sidebar"] [data-icon="events"] { --c: #E11D48; }
+.orison-warm [data-ui="sidebar"] [data-icon="surveys"] { --c: #0891B2; }
+.orison-warm [data-ui="sidebar"] [data-icon="settings"] { --c: #475569; }
+.orison-warm [data-ui="sidebar"] [data-icon] { background-color: color-mix(in srgb, var(--c, #3F3A8C) 12%, white) !important; }
+.orison-warm [data-ui="sidebar"] [data-icon] svg { color: var(--c, #3F3A8C) !important; }
+.orison-warm [data-ui="sidebar"] [data-ui="nav-active"] [data-icon] { background-color: rgba(255,255,255,0.16) !important; }
+.orison-warm [data-ui="sidebar"] [data-ui="nav-active"] [data-icon] svg { color: #FFFFFF !important; }
+
+/* Crisper cards (Admin trial): tighter corners, a clear 1px edge and a short, sharp shadow */
+.orison-warm main :is(.rounded-2xl, .rounded-3xl, [class*="rounded-[2"], [class*="rounded-[3"]) { border-radius: 14px !important; }
+.orison-warm main :is(.rounded-2xl, .rounded-3xl, [class*="rounded-[2"], [class*="rounded-[3"]):is(.bg-white, [class*="bg-white/9"], [class*="from-white"]) {
+  border: 1px solid #DFE2EA !important; --tw-ring-color: transparent !important;
+  box-shadow: 0 1px 0 rgba(15,23,42,0.04), 0 6px 16px -10px rgba(15,23,42,0.18) !important; }
+.orison-warm main :is(.rounded-2xl, .rounded-3xl, [class*="rounded-[2"]):is(.bg-white, [class*="bg-white/9"], [class*="from-white"]):hover { border-color: #C9CEDA !important; }
+.orison-warm header > div { border-radius: 14px !important; border: 1px solid #DFE2EA !important; box-shadow: 0 1px 0 rgba(15,23,42,0.04) !important; }

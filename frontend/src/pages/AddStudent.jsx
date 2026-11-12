@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { ChevronLeft, ChevronDown, Loader2, AlertTriangle } from 'lucide-react';
 import api from '../api';
+import { PageTitle } from '../components/Shared';
 
 const REQUIRED = ['name', 'admission_no', 'class_name', 'section', 'academic_year', 'gender', 'father_name', 'mobile'];
 
@@ -14,7 +15,7 @@ const AddStudent = () => {
   const [transportRoutes, setTransportRoutes] = useState([]);
   const [f, setF] = useState({
     name: '', admission_no: '', class_name: '', section: '', academic_year: '', status: '',
-    blood_group: '', dob: '', gender: '', aadhar: '', father_name: '', mobile: '',
+    blood_group: '', dob: '', gender: '', aadhar: '', apaar_id: '', pen: '', aadhaar_consent: '', rte_quota: '', previous_school: '', father_name: '', mobile: '',
     mother_name: '', mobile_alt: '', emergency_contact: '', guardian_name: '',
     transport_route_id: '', transport_route: '', pickup_stop: '',
   });
@@ -45,7 +46,12 @@ const AddStudent = () => {
     ['blood_group', 'Blood group', 'e.g. O+'],
     ['dob', 'Date of Birth', 'DD/MM/YYYY'],
     ['gender', 'Gender', 'Select Gender', true],
-    ['aadhar', 'Aadhar no', 'XXXX-XXXX-XXXX'],
+    ['aadhar', 'Aadhaar no', 'XXXX-XXXX-XXXX'],
+    ['apaar_id', 'APAAR ID', '12-digit APAAR ID'],
+    ['pen', 'PEN (UDISE+)', 'Permanent Education Number'],
+    ['aadhaar_consent', 'APAAR consent', 'Received / Pending / Declined'],
+    ['rte_quota', 'RTE 25% quota', 'Yes / No'],
+    ['previous_school', 'Previous school', 'School name (if transfer)'],
     ['father_name', 'Father / Guardian Name', 'Enter name'],
     ['mobile', 'Mobile num', '+91 ...'],
     ['mother_name', 'Mother name', 'Enter name'],
@@ -88,20 +94,17 @@ const AddStudent = () => {
     }
   };
 
-  const baseInput = 'w-full h-11 rounded-lg bg-[#f6f6f7] px-3.5 text-[13px] text-[#333] focus:outline-none focus:ring-2 transition';
+  const baseInput = 'w-full h-11 rounded-lg bg-[#f6f6f7] px-3.5 text-[14px] text-[#333] focus:outline-none focus:ring-2 transition';
 
   return (
     <Layout>
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate(-1)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100"><ChevronLeft className="w-5 h-5 text-[#555]" /></button>
-        <h2 className="font-poppins text-[22px] font-bold text-[#1a1a1a]">Add Student</h2>
-      </div>
+      <PageTitle eyebrow="New admission" title="Add Student" subtitle="Enter the student's details once — attendance, fees, the parent app and certificates all use this record." actions={<button onClick={() => navigate(-1)} className="flex h-10 items-center gap-1.5 rounded-xl border px-4 text-[13px] font-bold"><ChevronLeft className="w-4 h-4" />Back</button>} />
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
+      <div className="bg-white rounded-[22px] border border-white ring-1 ring-slate-100 shadow-[0_12px_32px_rgba(15,23,42,0.055)] p-7">
         {errors._form && (
           <div data-testid="add-student-form-error" className="mb-5 rounded-xl border border-indigo-100 bg-indigo-50 p-3.5 flex items-start gap-2.5">
             <AlertTriangle className="w-4.5 h-4.5 text-[#4F46E5] mt-0.5 shrink-0" />
-            <p className="text-[13px] text-[#4F46E5]">{errors._form}</p>
+            <p className="text-[14px] text-[#4F46E5]">{errors._form}</p>
           </div>
         )}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-x-6 gap-y-5">
@@ -110,7 +113,7 @@ const AddStudent = () => {
             const req = REQUIRED.includes(k);
             return (
               <div key={k}>
-                <label className="block text-[13px] text-[#555] mb-1.5">{label}{req && <span className="text-[#4F46E5]"> *</span>}</label>
+                <label className="block text-[14px] text-[#555] mb-1.5">{label}{req && <span className="text-[#4F46E5]"> *</span>}</label>
                 <div className="relative">
                   {select ? (
                     <select data-testid={`add-student-${k}`} value={f[k]} onChange={k === 'class_name' ? (e) => { set(k)(e); setF((current) => ({ ...current, section: '' })); } : k === 'transport_route_id' ? (e) => { const route = transportRoutes.find((item) => item.id === e.target.value); setF((current) => ({ ...current, transport_route_id: e.target.value, transport_route: route?.route_name || '', pickup_stop: '' })); } : set(k)} disabled={((k === 'class_name' || k === 'academic_year') && !opts[k].length) || (k === 'pickup_stop' && !f.transport_route_id)} className={`appearance-none pr-9 border ${baseInput} ${hasErr ? 'border-[#4F46E5] ring-indigo-100 focus:ring-indigo-100' : 'border-[#ececee] focus:ring-indigo-100'} disabled:opacity-60`}>
@@ -122,14 +125,14 @@ const AddStudent = () => {
                   )}
                   {select && <ChevronDown className="w-4 h-4 text-[#aaa] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />}
                 </div>
-                {hasErr && <p data-testid={`add-student-error-${k}`} className="text-[11px] text-[#4F46E5] mt-1">{errors[k]}</p>}
+                {hasErr && <p data-testid={`add-student-error-${k}`} className="text-[13px] text-[#4F46E5] mt-1">{errors[k]}</p>}
               </div>
             );
           })}
         </div>
         <div className="flex items-center justify-end gap-3 mt-8">
-          <button data-testid="add-student-cancel-btn" onClick={() => navigate(-1)} className="flex items-center gap-2 px-6 h-11 rounded-lg text-[13px] text-[#555] border border-gray-200 hover:bg-gray-50"><ChevronLeft className="w-4 h-4" /> Cancel</button>
-          <button data-testid="add-student-save-btn" onClick={save} disabled={saving} className="flex items-center gap-2 px-6 h-11 rounded-lg text-[13px] font-medium text-white bg-[#4F46E5] hover:bg-[#4338CA] shadow-sm disabled:opacity-70">
+          <button data-testid="add-student-cancel-btn" onClick={() => navigate(-1)} className="flex items-center gap-2 px-6 h-11 rounded-lg text-[14px] text-[#555] border border-gray-200 hover:bg-gray-50"><ChevronLeft className="w-4 h-4" /> Cancel</button>
+          <button data-testid="add-student-save-btn" onClick={save} disabled={saving} className="flex items-center gap-2 px-6 h-11 rounded-lg text-[14px] font-medium text-white bg-[#4F46E5] hover:bg-[#4338CA] shadow-sm disabled:opacity-70">
             {saving && <Loader2 className="w-4 h-4 animate-spin" />} Save & Continue
           </button>
         </div>

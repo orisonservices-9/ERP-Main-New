@@ -1,6 +1,6 @@
 import React from 'react';
 import './App.css';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ShieldOff } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
@@ -15,14 +15,15 @@ import CreateExam from './pages/CreateExam';
 import AddMarks from './pages/AddMarks';
 import LeaveManagement from './pages/LeaveManagement';
 import { PromoteStudent, TransferStudent } from './pages/modules/StudentOps';
-import { AttendanceManagement } from './pages/modules/AcademicsAttendance';
+import { AttendanceManagement } from './pages/modules/AttendanceManagementV2';
 import { AcademicActionCenter, CurriculumSyllabus, StudentHealthSignals, AcademicInterventions, ClassroomObservations } from './pages/modules/AcademicImprovement';
 import AcademicStructure from './pages/modules/AcademicStructure';
 import { AdmissionsCRM, CollectionIntelligence, PublicAdmissionExperience } from './pages/modules/BusinessIntelligence';
 import ManagementActionCenter from './pages/modules/ManagementActionCenter';
-import { AddStaff, ViewStaff } from './pages/modules/StaffDirectory';
+import { AddStaff, ViewStaff } from './pages/modules/StaffDirectoryV2';
 import { AddTeacher, ViewTeachers, AssignTeachers, ViewAllocations } from './pages/modules/TeacherManagement';
 import { CollectFee, CreateFees, FeeReceiptsArchive, ViewCollections, RazorpayVerification } from './pages/modules/FeeMgmt';
+import FeeControlCenter from './pages/modules/FeeControlCenter';
 import { ViewExam, Results, ReportCard } from './pages/modules/ExamsMarks';
 import { HomeworkManagement, TimetableManagement } from './pages/modules/Operations1';
 import { InventoryManagement, ExpensesManagement } from './pages/modules/Operations2';
@@ -34,6 +35,10 @@ import { BiometricManagement } from './pages/modules/HR';
 import { HRPayroll } from './pages/modules/HRPayrollLive';
 import { MultiBranch, SettingsPage } from './pages/modules/System';
 import HallTicketsManagement from './pages/HallTicketsManagement';
+import ParentAppCenter from './pages/ParentAppCenter';
+import { LibraryCatalogue, LibraryIssues, Hostel, Certificates, IdCards, Compliance, ConsentForms, EventsGallery, Surveys } from './pages/modules/SchoolServices';
+import { canAccessPath, firstRolePath } from './roleAccess';
+import { FeedbackHost } from './components/AppFeedback';
 
 const AccessDenied = () => (
   <Layout>
@@ -48,15 +53,19 @@ const AccessDenied = () => (
 
 const Protected = ({ requiredKey, children }) => {
   const { auth } = useAuth();
+  const location = useLocation();
   if (!auth) return <Navigate to="/login" replace />;
-  const menu = auth.role === 'academic_coordinator'
-    ? ['dashboard', 'academics', 'notifications']
-    : auth.menu; // null = admin (all)
-  if (menu && requiredKey && !menu.includes(requiredKey)) return <AccessDenied />;
+  if (requiredKey && !canAccessPath(auth.role, location.pathname, requiredKey)) return <AccessDenied />;
   return children;
 };
 
 const P = (el, key) => <Protected requiredKey={key}>{el}</Protected>;
+
+const RoleModuleRedirect = ({ moduleKey, adminPath }) => {
+  const { auth } = useAuth();
+  if (!auth) return <Navigate to="/login" replace />;
+  return <Navigate to={firstRolePath(auth.role, moduleKey, adminPath)} replace />;
+};
 
 function AppRoutes() {
   return (
@@ -96,11 +105,11 @@ function AppRoutes() {
       <Route path="/academics/interventions" element={P(<Navigate to="/academics/support-plans" replace />, 'academics')} />
       <Route path="/academics/support-plans" element={P(<AcademicInterventions />, 'academics')} />
       <Route path="/academics/classroom-observations" element={P(<ClassroomObservations />, 'academics')} />
-      <Route path="/attendance" element={P(<Navigate to="/attendance/add" replace />, 'attendance')} />
+      <Route path="/attendance" element={P(<RoleModuleRedirect moduleKey="attendance" adminPath="/attendance/add" />, 'attendance')} />
       <Route path="/attendance/add" element={P(<AttendanceManagement />, 'attendance')} />
       <Route path="/attendance/view" element={P(<AttendanceManagement />, 'attendance')} />
       <Route path="/attendance/reports" element={P(<AttendanceManagement />, 'attendance')} />
-      <Route path="/teachers" element={P(<Navigate to="/teachers/view" replace />, 'teachers')} />
+      <Route path="/teachers" element={P(<RoleModuleRedirect moduleKey="teachers" adminPath="/teachers/view" />, 'teachers')} />
       <Route path="/teachers/add" element={P(<AddTeacher />, 'teachers')} />
       <Route path="/teachers/view" element={P(<ViewTeachers />, 'teachers')} />
       <Route path="/teachers/assign" element={P(<AssignTeachers />, 'teachers')} />
@@ -111,20 +120,21 @@ function AppRoutes() {
       <Route path="/staff" element={P(<Navigate to="/staff/view" replace />, 'staff')} />
       <Route path="/staff/add" element={P(<AddStaff />, 'staff')} />
       <Route path="/staff/view" element={P(<ViewStaff />, 'staff')} />
-      <Route path="/fee" element={P(<Navigate to="/fee/collections" replace />, 'fee')} />
+      <Route path="/fee" element={P(<RoleModuleRedirect moduleKey="fee" adminPath="/fee/collections" />, 'fee')} />
       <Route path="/fee/create" element={P(<CreateFees />, 'fee')} />
       <Route path="/fee/collect" element={P(<CollectFee />, 'fee')} />
       <Route path="/fee/collections" element={P(<ViewCollections />, 'fee')} />
+      <Route path="/fee/control-center" element={P(<FeeControlCenter />, 'fee')} />
       <Route path="/fee/receipts" element={P(<FeeReceiptsArchive />, 'fee')} />
       <Route path="/fee/payment-verification" element={P(<RazorpayVerification />, 'fee')} />
       <Route path="/collections" element={P(<CollectionIntelligence />, 'collections')} />
-      <Route path="/homework" element={P(<Navigate to="/homework/add" replace />, 'homework')} />
+      <Route path="/homework" element={P(<RoleModuleRedirect moduleKey="homework" adminPath="/homework/add" />, 'homework')} />
       <Route path="/homework/add" element={P(<HomeworkManagement mode="add" />, 'homework')} />
       <Route path="/homework/reports" element={P(<HomeworkManagement mode="reports" />, 'homework')} />
-      <Route path="/hall-tickets" element={P(<Navigate to="/hall-tickets/create" replace />, 'hall_tickets')} />
+      <Route path="/hall-tickets" element={P(<RoleModuleRedirect moduleKey="hall_tickets" adminPath="/hall-tickets/create" />, 'hall_tickets')} />
       <Route path="/hall-tickets/create" element={P(<HallTicketsManagement mode="create" />, 'hall_tickets')} />
       <Route path="/hall-tickets/view" element={P(<HallTicketsManagement mode="view" />, 'hall_tickets')} />
-      <Route path="/timetable" element={P(<Navigate to="/timetable/create" replace />, 'timetable')} />
+      <Route path="/timetable" element={P(<RoleModuleRedirect moduleKey="timetable" adminPath="/timetable/create" />, 'timetable')} />
       <Route path="/timetable/create" element={P(<TimetableManagement mode="create" />, 'timetable')} />
       <Route path="/timetable/view" element={P(<TimetableManagement mode="view" />, 'timetable')} />
       <Route path="/timetable/reports" element={P(<TimetableManagement mode="reports" />, 'timetable')} />
@@ -154,11 +164,21 @@ function AppRoutes() {
       <Route path="/question-bank" element={P(<QuestionBank />, 'question')} />
       <Route path="/hr-payroll" element={P(<HRPayroll />, 'hr')} />
       <Route path="/biometric" element={P(<BiometricManagement />, 'biometric')} />
-      <Route path="/multi-branch" element={<Navigate to="/multi-branch/overview" replace />} />
+      <Route path="/multi-branch" element={P(<RoleModuleRedirect moduleKey="multibranch" adminPath="/multi-branch/overview" />, 'multibranch')} />
       <Route path="/multi-branch/overview" element={P(<MultiBranch mode="overview" />, 'multibranch')} />
       <Route path="/multi-branch/directory" element={P(<MultiBranch mode="directory" />, 'multibranch')} />
       <Route path="/multi-branch/reports" element={P(<MultiBranch mode="reports" />, 'multibranch')} />
       <Route path="/settings" element={P(<SettingsPage />, 'settings')} />
+      <Route path="/parent-center" element={P(<ParentAppCenter />, 'parent_center')} />
+      <Route path="/compliance" element={P(<Compliance />, 'compliance')} />
+      <Route path="/certificates" element={P(<Certificates />, 'certificates')} />
+      <Route path="/id-cards" element={P(<IdCards />, 'idcards')} />
+      <Route path="/consents" element={P(<ConsentForms />, 'consents')} />
+      <Route path="/library" element={P(<LibraryCatalogue />, 'library')} />
+      <Route path="/library/issues" element={P(<LibraryIssues />, 'library')} />
+      <Route path="/hostel" element={P(<Hostel />, 'hostel')} />
+      <Route path="/events" element={P(<EventsGallery />, 'events')} />
+      <Route path="/surveys" element={P(<Surveys />, 'surveys')} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -171,6 +191,7 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <AppRoutes />
+          <FeedbackHost />
         </BrowserRouter>
       </AuthProvider>
     </div>

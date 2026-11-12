@@ -23,15 +23,15 @@ export const TeachersManagement = () => {
         <Table columns={[{label:'Teacher'},{label:'ID'},{label:'Subject'},{label:'Classes'},{label:'Contact'},{label:'Status'}]}>
           {rows.map((t) => (
             <tr key={t.id} className="border-b border-gray-50 last:border-0 hover:bg-[#fafafa]">
-              <td className="py-3"><div className="flex items-center gap-3"><Avatar src={t.avatar} alt={t.name} /><span className="text-[13px] font-medium text-[#1a1a1a]">{t.name}</span></div></td>
-              <td className="py-3 text-[13px] text-[#666]">{t.id}</td>
-              <td className="py-3 text-[13px] text-[#666]">{t.subject}</td>
-              <td className="py-3 text-[13px] text-[#666]">{t.classes}</td>
-              <td className="py-3 text-[13px] text-[#666] flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-[#bbb]" />{t.phone}</td>
+              <td className="py-3"><div className="flex items-center gap-3"><Avatar src={t.avatar} alt={t.name} /><span className="text-[14px] font-medium text-[#1a1a1a]">{t.name}</span></div></td>
+              <td className="py-3 text-[14px] text-[#666]">{t.id}</td>
+              <td className="py-3 text-[14px] text-[#666]">{t.subject}</td>
+              <td className="py-3 text-[14px] text-[#666]">{t.classes}</td>
+              <td className="py-3 text-[14px] text-[#666] flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-[#bbb]" />{t.phone}</td>
               <td className="py-3"><Badge color={t.status === 'Active' ? 'green' : 'amber'}>{t.status}</Badge></td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-[13px] text-[#999]">No teachers found.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-[14px] text-[#999]">No teachers found.</td></tr>}
         </Table>
       </Card>
     </Layout>
@@ -56,15 +56,15 @@ export const StaffManagement = () => {
         <Table columns={[{label:'Staff'},{label:'ID'},{label:'Role'},{label:'Department'},{label:'Contact'},{label:'Status'}]}>
           {rows.map((t) => (
             <tr key={t.id} className="border-b border-gray-50 last:border-0 hover:bg-[#fafafa]">
-              <td className="py-3"><div className="flex items-center gap-3"><Avatar src={t.avatar} alt={t.name} /><span className="text-[13px] font-medium text-[#1a1a1a]">{t.name}</span></div></td>
-              <td className="py-3 text-[13px] text-[#666]">{t.id}</td>
-              <td className="py-3 text-[13px] text-[#666]">{t.role}</td>
-              <td className="py-3 text-[13px] text-[#666]">{t.dept}</td>
-              <td className="py-3 text-[13px] text-[#666] flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-[#bbb]" />{t.phone}</td>
+              <td className="py-3"><div className="flex items-center gap-3"><Avatar src={t.avatar} alt={t.name} /><span className="text-[14px] font-medium text-[#1a1a1a]">{t.name}</span></div></td>
+              <td className="py-3 text-[14px] text-[#666]">{t.id}</td>
+              <td className="py-3 text-[14px] text-[#666]">{t.role}</td>
+              <td className="py-3 text-[14px] text-[#666]">{t.dept}</td>
+              <td className="py-3 text-[14px] text-[#666] flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-[#bbb]" />{t.phone}</td>
               <td className="py-3"><Badge color={t.status === 'Active' ? 'green' : 'amber'}>{t.status}</Badge></td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-[13px] text-[#999]">No staff found.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-[14px] text-[#999]">No staff found.</td></tr>}
         </Table>
       </Card>
     </Layout>

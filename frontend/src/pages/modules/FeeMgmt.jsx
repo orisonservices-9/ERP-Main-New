@@ -1,16 +1,36 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import StudentLink from '../../components/StudentLink';
+import { askText } from '../../components/AppFeedback';
 import Layout from '../../components/Layout';
 import { Badge, Btn, Card, PageTitle, StatCards, Table } from '../../components/Shared';
-import { CheckCircle2, CreditCard, Download, Edit3, FileText, IndianRupee, Landmark, LockKeyhole, Printer, Receipt, RefreshCw, Search, ShieldCheck, Wallet, X } from 'lucide-react';
+import { CalendarDays, CheckCircle2, CreditCard, Download, Edit3, FileText, IndianRupee, Landmark, LockKeyhole, Printer, Receipt, RefreshCw, Search, ShieldCheck, UserRound, Users, Wallet, X } from 'lucide-react';
 import api from '../../api';
 import { downloadCSV, printPage } from '../../utils';
 import { useAuth } from '../../context/AuthContext';
 
 const money = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const today = () => new Date().toISOString().slice(0, 10);
-const input = 'mt-1 h-10 w-full rounded-lg border border-gray-200 bg-[#f7f8f9] px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-100';
+const input = 'mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 shadow-sm outline-none transition focus:border-emerald-300 focus:ring-4 focus:ring-emerald-50';
 const feeTypes = ['Tuition', 'Admission', 'Transport', 'Exam', 'Library', 'Laboratory', 'Activity', 'Other'];
 const colour = (status) => status === 'Paid' ? 'green' : status === 'Partial' ? 'amber' : status === 'Overdue' ? 'red' : 'gray';
+
+const StudentPhoto = ({ student, size = 'h-11 w-11' }) => {
+  const [failed, setFailed] = useState(false);
+  const initials = String(student?.name || 'Student').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+  if (student?.avatar && !failed) return <img src={student.avatar} alt={`${student.name} profile`} onError={() => setFailed(true)} className={`${size} shrink-0 rounded-xl border-2 border-white object-cover shadow-sm ring-1 ring-slate-200`} />;
+  return <div aria-label={`${student?.name || 'Student'} profile placeholder`} className={`${size} flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-[13px] font-bold text-white shadow-sm`} title="Student photo not uploaded">{initials || <UserRound className="h-5 w-5" />}</div>;
+};
+
+const feeNavigation = [
+  { label: 'Create Fees', path: '/fee/create', icon: FileText },
+  { label: 'Collect Fee', path: '/fee/collect', icon: IndianRupee },
+  { label: 'Collections', path: '/fee/collections', icon: Wallet },
+  { label: 'Receipts', path: '/fee/receipts', icon: Receipt },
+  { label: 'Control Center', path: '/fee/control-center', icon: ShieldCheck },
+  { label: 'Online Payments', path: '/fee/payment-verification', icon: CreditCard },
+];
+
+const FeeHero = ({ eyebrow, title, copy, active, metrics = [] }) => <div className="fee-premium-hero mb-6 overflow-hidden rounded-[28px] border border-emerald-900/10 bg-gradient-to-br from-slate-950 via-emerald-950 to-teal-900 text-white shadow-[0_24px_60px_-32px_rgba(6,78,59,.75)]"><div className="grid gap-6 p-7 xl:grid-cols-[1fr_auto] xl:items-end"><div><span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[12px] font-bold uppercase tracking-[.16em] text-emerald-100"><Landmark className="h-3.5 w-3.5"/>{eyebrow}</span><h2 className="mt-4 max-w-2xl font-poppins text-[28px] font-bold leading-tight">{title}</h2><p className="mt-2 max-w-2xl text-[13px] leading-5 text-emerald-100/70">{copy}</p></div>{metrics.length>0&&<div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{metrics.map(({label,value,icon:Icon=IndianRupee})=><div key={label} className="min-w-[126px] rounded-2xl border border-white/10 bg-white/[.08] p-4"><Icon className="h-4 w-4 text-emerald-200"/><p className="mt-3 text-[19px] font-bold">{value}</p><p className="mt-1 text-[12px] font-bold uppercase tracking-wider text-emerald-100/50">{label}</p></div>)}</div>}</div><div className="flex gap-2 overflow-x-auto border-t border-white/10 bg-black/10 px-5 py-3">{feeNavigation.map(({label,path,icon:Icon})=><a key={path} href={path} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-[12px] font-bold transition ${active===path?'bg-white text-emerald-950 shadow-lg':'text-emerald-100/70 hover:bg-white/10 hover:text-white'}`}><Icon className="h-3.5 w-3.5"/>{label}</a>)}</div></div>;
 
 function useFees() {
   const [invoices, setInvoices] = useState([]); const [students, setStudents] = useState([]); const [structure, setStructure] = useState({ academic_year: '', classes: [] }); const [summary, setSummary] = useState({}); const [loading, setLoading] = useState(true);
@@ -20,7 +40,7 @@ function useFees() {
 
 const GroupFilters = ({ structure, value, onChange, allowAllSections = false }) => {
   const sections = structure.classes.find((item) => item.name === value.class_name)?.sections || [];
-  return <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><label className="text-[12px] font-medium text-[#555]">Select class<select className={input} value={value.class_name} onChange={(event) => onChange({ class_name: event.target.value, section: '' })}><option value="">Select class</option>{structure.classes.map((item) => <option key={item.id || item.name} value={item.name}>{item.name}</option>)}</select></label><label className="text-[12px] font-medium text-[#555]">Select section<select className={input} disabled={!value.class_name} value={value.section} onChange={(event) => onChange({ ...value, section: event.target.value })}><option value="">{allowAllSections ? 'All Sections' : 'Select section'}</option>{sections.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label></div>;
+  return <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><label className="text-[13px] font-semibold text-slate-600">Select class<select className={input} value={value.class_name} onChange={(event) => onChange({ class_name: event.target.value, section: '' })}><option value="">Select class</option>{structure.classes.map((item) => <option key={item.id || item.name} value={item.name}>{item.name}</option>)}</select></label><label className="text-[13px] font-semibold text-slate-600">Select section<select className={input} disabled={!value.class_name} value={value.section} onChange={(event) => onChange({ ...value, section: event.target.value })}><option value="">{allowAllSections ? 'All Sections' : 'Select section'}</option>{sections.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label></div>;
 };
 
 export const CreateFees = () => {
@@ -58,6 +78,7 @@ export const CreateFees = () => {
   useEffect(() => { loadExistingFees(); }, [loadExistingFees]);
 
   const submit = async () => {
+    if (!form.name.trim() || !Number(form.amount) || !form.due_date) { setNotice('Enter the fee name, amount and due date.'); return; }
     setSaving(true);
     setNotice('');
     try {
@@ -74,9 +95,9 @@ export const CreateFees = () => {
 
   return (
     <Layout>
-      <PageTitle title="Create Fee" subtitle="First select the Class and Section, create the new fee, then check existing fees for the same academic group." />
+      <FeeHero eyebrow="Fee structure studio" title="Create fees with clarity and control." copy="Choose the academic group, define the charge once and let Orison create the correct student invoices without repetitive entry." active="/fee/create" metrics={[{label:'Academic year',value:structure.academic_year||'Not set',icon:CalendarDays},{label:'Selected groups',value:targets.length,icon:Users},{label:'Existing fees',value:existingFees.length,icon:Receipt}]}/>
 
-      {notice && <div className={`mb-5 rounded-xl border px-4 py-3 text-[13px] ${notice.includes('was created') ? 'border-green-100 bg-green-50 text-green-700' : 'border-indigo-100 bg-indigo-50 text-indigo-700'}`}>{notice}</div>}
+      {notice && <div className={`mb-5 rounded-xl border px-4 py-3 text-[14px] ${notice.includes('was created') ? 'border-green-100 bg-green-50 text-green-700' : 'border-indigo-100 bg-indigo-50 text-indigo-700'}`}>{notice}</div>}
 
       <Card className="mb-6" title="1. Select academic group" subtitle="Choose one Section, or leave Section on All Sections to apply the fee to every section in the selected Class.">
         <GroupFilters structure={structure} value={target} onChange={setTarget} allowAllSections />
@@ -84,17 +105,17 @@ export const CreateFees = () => {
 
       <Card className="mb-6" title="2. Fee details" subtitle="The fee becomes locked after creation. Any later change requires the Director’s OTP approval.">
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-          <label className="md:col-span-2 text-[12px] font-medium text-[#555]">Fee name *<input className={input} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="e.g. School Fee – Term 1" /></label>
-          <label className="text-[12px] font-medium text-[#555]">Fee type *<select className={input} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{feeTypes.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label className="text-[12px] font-medium text-[#555]">Amount (₹) *<input className={input} type="number" min="1" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="0.00" /></label>
-          <label className="md:col-span-2 text-[12px] font-medium text-[#555]">Description<textarea className={`${input} h-24 py-3`} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="What does this fee include?" /></label>
-          <label className="text-[12px] font-medium text-[#555]">Start date<input className={input} type="date" value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} /></label>
-          <label className="text-[12px] font-medium text-[#555]">End / due date *<input className={input} type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} /></label>
+          <label className="md:col-span-2 text-[13px] font-medium text-[#555]">Fee name *<input className={input} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="e.g. School Fee – Term 1" /></label>
+          <label className="text-[13px] font-medium text-[#555]">Fee type *<select className={input} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{feeTypes.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label className="text-[13px] font-medium text-[#555]">Amount (₹) *<input className={input} type="number" min="1" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="0.00" /></label>
+          <label className="md:col-span-2 text-[13px] font-medium text-[#555]">Description<textarea className={`${input} h-24 py-3`} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="What does this fee include?" /></label>
+          <label className="text-[13px] font-medium text-[#555]">Start date<input className={input} type="date" value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} /></label>
+          <label className="text-[13px] font-medium text-[#555]">End / due date *<input className={input} type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} /></label>
         </div>
         <div className="mt-6 flex items-center justify-between rounded-xl bg-[#f7f8f9] p-4">
           <div>
-            <p className="text-[13px] font-semibold">Academic Year: {structure.academic_year || 'Not configured'}</p>
-            <p className="text-[12px] text-[#777]">Target: {target.class_name ? `${target.class_name}${target.section ? ` — ${target.section}` : ' — All Sections'}` : 'Select a Class first'}</p>
+            <p className="text-[14px] font-semibold">Academic Year: {structure.academic_year || 'Not configured'}</p>
+            <p className="text-[13px] text-[#777]">Target: {target.class_name ? `${target.class_name}${target.section ? ` — ${target.section}` : ' — All Sections'}` : 'Select a Class first'}</p>
           </div>
           <Btn icon={FileText} onClick={submit} disabled={saving || !targets.length}>{saving ? 'Creating…' : 'Create Fee'}</Btn>
         </div>
@@ -110,19 +131,19 @@ export const CreateFees = () => {
             <Table columns={[{ label: 'Fee Name' }, { label: 'Type' }, { label: 'Amount' }, { label: 'Applies To' }, { label: 'Start Date' }, { label: 'Due Date' }]}>
               {existingFees.map((fee) => (
                 <tr key={fee.id} className="border-b border-gray-50">
-                  <td className="px-6 py-4 text-[13px] font-semibold">{fee.name}<span className="block text-[11px] font-normal text-[#999]">{fee.description || 'No description'}</span></td>
-                  <td className="py-4 text-[13px]">{fee.category}</td>
-                  <td className="py-4 text-[13px] font-semibold">{money(fee.amount)}</td>
-                  <td className="py-4 text-[12px]">{fee.targets?.filter((item) => item.class_name === target.class_name).map((item) => item.section).join(', ') || '—'}</td>
-                  <td className="py-4 text-[12px]">{fee.start_date || '—'}</td>
-                  <td className="py-4 pr-6 text-[12px]">{fee.due_date || '—'}</td>
+                  <td className="px-6 py-4 text-[14px] font-semibold">{fee.name}<span className="block text-[13px] font-normal text-[#999]">{fee.description || 'No description'}</span></td>
+                  <td className="py-4 text-[14px]">{fee.category}</td>
+                  <td className="py-4 text-[14px] font-semibold">{money(fee.amount)}</td>
+                  <td className="py-4 text-[13px]">{fee.targets?.filter((item) => item.class_name === target.class_name).map((item) => item.section).join(', ') || '—'}</td>
+                  <td className="py-4 text-[13px]">{fee.start_date || '—'}</td>
+                  <td className="py-4 pr-6 text-[13px]">{fee.due_date || '—'}</td>
                 </tr>
               ))}
             </Table>
-            {!existingFees.length && <p className="py-12 text-center text-[13px] text-[#999]">No fee has been created for this selected group yet. You can create the first one above.</p>}
+            {!existingFees.length && <p className="py-12 text-center text-[14px] text-[#999]">No fee has been created for this selected group yet. You can create the first one above.</p>}
           </div>
         ) : (
-          <p className="py-14 text-center text-[13px] text-[#999]">Select a Class and Section to view existing fees.</p>
+          <p className="py-14 text-center text-[14px] text-[#999]">Select a Class and Section to view existing fees.</p>
         )}
       </Card>
     </Layout>
@@ -137,7 +158,7 @@ const RecentPayments = ({ rows, groupSelected, query, onQueryChange }) => (
       <div className="relative">
         <Search size={16} className="absolute left-3 top-3 text-[#999]" />
         <input
-          className="h-10 w-64 rounded-lg border border-gray-200 pl-9 pr-3 text-[13px] outline-none focus:ring-2 focus:ring-indigo-100"
+          className="h-10 w-64 rounded-lg border border-gray-200 pl-9 pr-3 text-[14px] outline-none focus:ring-2 focus:ring-indigo-100"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="Search student or receipt…"
@@ -150,21 +171,21 @@ const RecentPayments = ({ rows, groupSelected, query, onQueryChange }) => (
       <Table columns={[{ label: 'Receipt No.' }, { label: 'Student' }, { label: 'Class' }, { label: 'Section' }, { label: 'Fee' }, { label: 'Amount Received' }, { label: 'Payment Mode' }, { label: 'Received On' }]}>
         {rows.map((payment) => (
           <tr key={payment.id} className="border-b border-gray-50">
-            <td className="px-6 py-4 text-[12px] font-semibold text-[#4F46E5]">{payment.id}</td>
-            <td className="py-4 text-[13px] font-semibold">
+            <td className="px-6 py-4 text-[13px] font-semibold text-[#4F46E5]">{payment.id}</td>
+            <td className="py-4 text-[14px] font-semibold">
               {payment.student_name}
-              <span className="block text-[11px] font-normal text-[#999]">{payment.admission_no || 'Admission number unavailable'}</span>
+              <span className="block text-[13px] font-normal text-[#999]">{payment.admission_no || 'Admission number unavailable'}</span>
             </td>
-            <td className="py-4 text-[13px]">{payment.class_name || '—'}</td>
-            <td className="py-4 text-[13px]">{payment.section || '—'}</td>
-            <td className="py-4 text-[13px]">{payment.fee_name || 'School Fee'}</td>
-            <td className="py-4 text-[13px] font-semibold text-green-700">{money(payment.amount)}</td>
+            <td className="py-4 text-[14px]">{payment.class_name || '—'}</td>
+            <td className="py-4 text-[14px]">{payment.section || '—'}</td>
+            <td className="py-4 text-[14px]">{payment.fee_name || 'School Fee'}</td>
+            <td className="py-4 text-[14px] font-semibold text-green-700">{money(payment.amount)}</td>
             <td className="py-4"><Badge color="blue">{payment.method || 'Cash'}</Badge></td>
-            <td className="py-4 pr-6 text-[12px] text-[#666]">{payment.paid_at ? new Date(payment.paid_at).toLocaleString() : '—'}</td>
+            <td className="py-4 pr-6 text-[13px] text-[#666]">{payment.paid_at ? new Date(payment.paid_at).toLocaleString() : '—'}</td>
           </tr>
         ))}
       </Table>
-      {!rows.length && <p className="py-16 text-center text-[13px] text-[#999]">{groupSelected ? 'No payments have been received for this selection yet.' : 'No fee payments have been recorded yet.'}</p>}
+      {!rows.length && <p className="py-16 text-center text-[14px] text-[#999]">{groupSelected ? 'No payments have been received for this selection yet.' : 'No fee payments have been recorded yet.'}</p>}
     </div>
   </Card>
 );
@@ -211,10 +232,7 @@ export const ViewCollections = () => {
 
   return (
     <Layout>
-      <PageTitle
-        title="View Collections"
-        subtitle="View the fee position and latest payments for the whole school, or select a Class and Section to focus on one group."
-      />
+      <FeeHero eyebrow="Collection command center" title="See the school’s complete fee position at one glance." copy="Expected income, money received and outstanding balances stay connected to each student account and receipt." active="/fee/collections" metrics={[{label:'Expected',value:money(overview.total),icon:Wallet},{label:'Collected',value:money(overview.collected),icon:IndianRupee},{label:'Efficiency',value:`${efficiency}%`,icon:CheckCircle2}]}/>
 
       <StatCards items={[
         { label: 'Fee Expected', value: money(overview.total), icon: Wallet },
@@ -241,7 +259,7 @@ export const ViewCollections = () => {
   );
 };
 
-const EditFeeModal = ({ value, setValue, onClose, onRequest }) => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl"><div className="mb-5 flex items-center justify-between"><h2 className="font-poppins text-[20px] font-bold">View / Edit Fee</h2><button onClick={onClose}><X size={20} /></button></div><p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-800">This fee is locked. Saving changes sends a Director approval request and the Director’s OTP is required before any invoice changes.</p><div className="grid grid-cols-1 gap-4 md:grid-cols-2"><label className="md:col-span-2 text-[12px] font-medium">Fee name<input className={input} value={value.name} onChange={(event) => setValue({ ...value, name: event.target.value })} /></label><label className="text-[12px] font-medium">Type<select className={input} value={value.category} onChange={(event) => setValue({ ...value, category: event.target.value })}>{feeTypes.map((item) => <option key={item}>{item}</option>)}</select></label><label className="text-[12px] font-medium">Amount<input className={input} type="number" value={value.amount} onChange={(event) => setValue({ ...value, amount: event.target.value })} /></label><label className="md:col-span-2 text-[12px] font-medium">Description<textarea className={`${input} h-20 py-2`} value={value.description || ''} onChange={(event) => setValue({ ...value, description: event.target.value })} /></label><label className="text-[12px] font-medium">Start date<input className={input} type="date" value={value.start_date || ''} onChange={(event) => setValue({ ...value, start_date: event.target.value })} /></label><label className="text-[12px] font-medium">Due date<input className={input} type="date" value={value.due_date || ''} onChange={(event) => setValue({ ...value, due_date: event.target.value })} /></label></div><div className="mt-6 flex justify-end gap-3"><Btn variant="outline" onClick={onClose}>Cancel</Btn><Btn icon={LockKeyhole} onClick={onRequest}>Request Director Approval</Btn></div></div></div>;
+const EditFeeModal = ({ value, setValue, onClose, onRequest }) => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl"><div className="mb-5 flex items-center justify-between"><h2 className="font-poppins text-[20px] font-bold">View / Edit Fee</h2><button onClick={onClose}><X size={20} /></button></div><p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800">This fee is locked. Saving changes sends a Director approval request and the Director’s OTP is required before any invoice changes.</p><div className="grid grid-cols-1 gap-4 md:grid-cols-2"><label className="md:col-span-2 text-[13px] font-medium">Fee name<input className={input} value={value.name} onChange={(event) => setValue({ ...value, name: event.target.value })} /></label><label className="text-[13px] font-medium">Type<select className={input} value={value.category} onChange={(event) => setValue({ ...value, category: event.target.value })}>{feeTypes.map((item) => <option key={item}>{item}</option>)}</select></label><label className="text-[13px] font-medium">Amount<input className={input} type="number" value={value.amount} onChange={(event) => setValue({ ...value, amount: event.target.value })} /></label><label className="md:col-span-2 text-[13px] font-medium">Description<textarea className={`${input} h-20 py-2`} value={value.description || ''} onChange={(event) => setValue({ ...value, description: event.target.value })} /></label><label className="text-[13px] font-medium">Start date<input className={input} type="date" value={value.start_date || ''} onChange={(event) => setValue({ ...value, start_date: event.target.value })} /></label><label className="text-[13px] font-medium">Due date<input className={input} type="date" value={value.due_date || ''} onChange={(event) => setValue({ ...value, due_date: event.target.value })} /></label></div><div className="mt-6 flex justify-end gap-3"><Btn variant="outline" onClick={onClose}>Cancel</Btn><Btn icon={LockKeyhole} onClick={onRequest}>Request Director Approval</Btn></div></div></div>;
 
 export const CollectFee = () => {
   const { invoices, students, structure, load } = useFees();
@@ -254,6 +272,7 @@ export const CollectFee = () => {
   const [discount, setDiscount] = useState('');
   const [discountReason, setDiscountReason] = useState('');
   const [method, setMethod] = useState('Cash');
+  const [transactionReference, setTransactionReference] = useState('');
   const [result, setResult] = useState(null);
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
@@ -287,10 +306,13 @@ export const CollectFee = () => {
     setAmount(String(fee.due));
     setDiscount('0');
     setDiscountReason('');
+    setTransactionReference('');
     setReceiptOpen(true);
   };
 
   const submit = async () => {
+    const reference = method === 'Cash' ? '' : (transactionReference || await askText(`Enter the ${method} transaction / UTR / cheque number`) || '').trim();
+    if (method !== 'Cash' && !reference) { setNotice('A transaction, UTR or cheque number is required for non-cash payments.'); return; }
     setSaving(true);
     try {
       const { data } = await api.post(`/fees/${fee.id}/pay`, {
@@ -298,6 +320,7 @@ export const CollectFee = () => {
         discount: Number(discount || 0),
         discount_reason: discountReason,
         method,
+        transaction_reference: reference,
       });
       setResult(data.receipt);
       setReceiptOpen(false);
@@ -312,13 +335,13 @@ export const CollectFee = () => {
 
   return (
     <Layout>
-      <PageTitle title="Collect Fee" subtitle="Search by full student name or admission number. You can also select a Class and Section to find a student." />
+      <FeeHero eyebrow="Cashier workspace" title="Find the student, verify the dues and issue one accurate receipt." copy="Partial payments, previous-year dues, approved discounts and non-cash references remain visible in one controlled collection flow." active="/fee/collect" metrics={[{label:'Student selected',value:student?'Yes':'No',icon:Users},{label:'Pending heads',value:pending.length,icon:Receipt},{label:'Outstanding',value:money(pending.reduce((sum,item)=>sum+Number(item.due||0),0)),icon:IndianRupee}]}/>
 
-      {notice && <div className={`mb-5 rounded-xl border px-4 py-3 text-[13px] ${notice.includes('recorded') ? 'border-green-100 bg-green-50 text-green-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>{notice}</div>}
+      {notice && <div className={`mb-5 rounded-xl border px-4 py-3 text-[14px] ${notice.includes('recorded') ? 'border-green-100 bg-green-50 text-green-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>{notice}</div>}
 
       <Card className="mb-6" title="Find Student" subtitle="Student records stay hidden until you search or choose both a Class and Section.">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <label className="lg:col-span-1 text-[12px] font-medium text-[#555]">
+          <label className="lg:col-span-1 text-[13px] font-medium text-[#555]">
             Universal search
             <div className="relative">
               <Search size={16} className="absolute left-3 top-[22px] text-[#999]" />
@@ -330,20 +353,20 @@ export const CollectFee = () => {
 
         {canBrowse ? (
           <div className="mt-5 max-h-52 overflow-auto rounded-xl border border-gray-100">
-            <Table columns={[{ label: 'Student' }, { label: 'Admission No.' }, { label: 'Class / Section' }, { label: '' }]}>
+            <Table columns={[{ label: 'Student' }, { label: 'Admission No.' }, { label: 'Class / Section' }, { label: '' }]}> 
               {found.map((item) => (
-                <tr key={item.id} className="border-b border-gray-50">
-                  <td className="py-3 text-[13px] font-semibold">{item.name}</td>
-                  <td className="py-3 text-[12px] text-[#666]">{item.admission_no}</td>
-                  <td className="py-3 text-[12px] text-[#666]">{item.class_name} — {item.section}</td>
-                  <td className="py-3 text-right"><button onClick={() => { setStudentId(item.id); setFeeId(''); setResult(null); }} className="text-[12px] font-semibold text-[#4F46E5]">Open account</button></td>
+                <tr key={item.id} className={`border-b border-gray-50 transition hover:bg-emerald-50/40 ${studentId === item.id ? 'bg-indigo-50/60' : ''}`}>
+                  <td className="py-3 text-[14px] font-semibold"><div className="flex items-center gap-3"><StudentPhoto student={item} /><div><span className="block">{item.name}</span><span className="mt-0.5 block text-[12px] font-normal text-slate-400">{item.gender || 'Student profile'}</span></div></div></td>
+                  <td className="py-3 text-[13px] text-[#666]">{item.admission_no}</td>
+                  <td className="py-3 text-[13px] text-[#666]">{item.class_name} — {item.section}</td>
+                  <td className="py-3 text-right"><button onClick={() => { setStudentId(item.id); setFeeId(''); setResult(null); }} className="text-[13px] font-semibold text-[#4F46E5]">Open account</button></td>
                 </tr>
               ))}
             </Table>
-            {!found.length && <p className="py-8 text-center text-[13px] text-[#999]">No student matches this search or group.</p>}
+            {!found.length && <p className="py-8 text-center text-[14px] text-[#999]">No student matches this search or group.</p>}
           </div>
         ) : (
-          <div className="mt-5 rounded-xl border border-dashed border-gray-200 bg-[#fafafa] px-4 py-8 text-center text-[13px] text-[#888]">
+          <div className="mt-5 rounded-xl border border-dashed border-gray-200 bg-[#fafafa] px-4 py-8 text-center text-[14px] text-[#888]">
             Type a student name or admission number above to start collecting a fee.
           </div>
         )}
@@ -353,16 +376,16 @@ export const CollectFee = () => {
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           <Card className="xl:col-span-1" title="Student Collection Health">
             <div className="flex items-center gap-3">
-              <img src={student.avatar} alt="" className="h-12 w-12 rounded-xl object-cover" />
-              <div><p className="font-semibold">{student.name}</p><p className="text-[12px] text-[#777]">Adm No. {student.admission_no} · {student.class_name} — {student.section}</p></div>
+              <StudentPhoto student={student} size="h-14 w-14" />
+              <div><p className="font-semibold">{student.name}</p><p className="text-[13px] text-[#777]">Adm No. {student.admission_no} · {student.class_name} — {student.section}</p></div>
             </div>
             <div className="mt-5 rounded-xl bg-[#f1f5f8] p-4">
-              <p className="text-[12px] text-[#777]">Collection Percentage</p>
+              <p className="text-[13px] text-[#777]">Collection Percentage</p>
               <p className={`mt-1 text-[26px] font-bold ${percent >= 80 ? 'text-green-600' : percent >= 40 ? 'text-amber-600' : 'text-[#4F46E5]'}`}>{percent}%</p>
-              <p className="text-[12px] text-[#777]">{percent >= 80 ? 'Healthy collection' : percent >= 40 ? 'Needs follow-up' : 'Critical outstanding balance'}</p>
+              <p className="text-[13px] text-[#777]">{percent >= 80 ? 'Healthy collection' : percent >= 40 ? 'Needs follow-up' : 'Critical outstanding balance'}</p>
             </div>
-            <div className="mt-4 text-[13px]"><p className="text-[#777]">Current Outstanding</p><b className="text-[#4F46E5]">{money(pending.reduce((sum, item) => sum + item.due, 0))}</b></div>
-            {pastDue.length > 0 && <div className="mt-4 rounded-lg bg-indigo-50 p-3 text-[12px] text-indigo-700">{pastDue.length} pending fee(s) from a previous Academic Year: {money(pastDue.reduce((sum, item) => sum + item.due, 0))}</div>}
+            <div className="mt-4 text-[14px]"><p className="text-[#777]">Current Outstanding</p><b className="text-[#4F46E5]">{money(pending.reduce((sum, item) => sum + item.due, 0))}</b></div>
+            {pastDue.length > 0 && <div className="mt-4 rounded-lg bg-indigo-50 p-3 text-[13px] text-indigo-700">{pastDue.length} pending fee(s) from a previous Academic Year: {money(pastDue.reduce((sum, item) => sum + item.due, 0))}</div>}
           </Card>
 
           <Card className="xl:col-span-2" title="Select Fee and Open Receipt">
@@ -370,35 +393,35 @@ export const CollectFee = () => {
               {pending.map((item) => (
                 <tr key={item.id} className="border-b border-gray-100">
                   <td className="py-4"><input type="radio" name="fee" checked={feeId === item.id} onChange={() => setFeeId(item.id)} className="accent-[#4F46E5]" /></td>
-                  <td className="py-4 text-[13px] font-semibold">{item.fee_name || 'School Fee'}<span className="block text-[11px] font-normal text-[#999]">{item.category || 'General Fee'}</span></td>
-                  <td className="py-4 text-[12px]">{item.academic_year || '—'}</td>
-                  <td className="py-4 text-[12px]">{item.due_date || '—'}</td>
-                  <td className="py-4 text-[13px] font-semibold">{money(item.due)}</td>
+                  <td className="py-4 text-[14px] font-semibold">{item.fee_name || 'School Fee'}<span className="block text-[13px] font-normal text-[#999]">{item.category || 'General Fee'}</span></td>
+                  <td className="py-4 text-[13px]">{item.academic_year || '—'}</td>
+                  <td className="py-4 text-[13px]">{item.due_date || '—'}</td>
+                  <td className="py-4 text-[14px] font-semibold">{money(item.due)}</td>
                   <td className="py-4"><Badge color={colour(item.status)}>{item.status}</Badge></td>
                 </tr>
               ))}
             </Table>
-            {pending.length ? <div className="mt-5 flex justify-end"><Btn icon={Receipt} onClick={openReceipt}>Open Payment Receipt</Btn></div> : <p className="py-12 text-center text-[13px] text-green-700">No pending fees for this student.</p>}
+            {pending.length ? <div className="mt-5 flex justify-end"><Btn icon={Receipt} onClick={openReceipt}>Open Payment Receipt</Btn></div> : <p className="py-12 text-center text-[14px] text-green-700">No pending fees for this student.</p>}
           </Card>
         </div>
       )}
 
-      {receiptOpen && fee && <ReceiptModal student={student} fee={fee} amount={amount} setAmount={setAmount} discount={discount} setDiscount={setDiscount} discountReason={discountReason} setDiscountReason={setDiscountReason} method={method} setMethod={setMethod} onClose={() => setReceiptOpen(false)} onSubmit={submit} saving={saving} />}
+      {receiptOpen && fee && <ReceiptModal student={student} fee={fee} amount={amount} setAmount={setAmount} discount={discount} setDiscount={setDiscount} discountReason={discountReason} setDiscountReason={setDiscountReason} method={method} setMethod={setMethod} transactionReference={transactionReference} setTransactionReference={setTransactionReference} onClose={() => setReceiptOpen(false)} onSubmit={submit} saving={saving} />}
       {result && <ReceiptView receipt={result} student={student} onClose={() => setResult(null)} />}
     </Layout>
   );
 };
 
-const SchoolHeader = ({ receiptNo, date, academicYear }) => <div className="border-b-2 border-black pb-3"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 border-black bg-[#f5f5f5] text-center font-serif text-[12px] font-black leading-tight">ORISON<br />SCHOOL</div><div className="font-serif"><p className="text-[24px] font-black leading-tight">ORISON MODEL SCHOOL</p><p className="text-[14px] font-bold">ACADEMIC YEAR ({academicYear || '2026–27'})</p><p className="mt-1 text-[12px]">School Campus, Hyderabad · Ph: 00000 00000</p></div></div><div className="shrink-0 pt-2 text-right font-serif text-[12px]"><p>Date: <b>{date}</b></p><p className="mt-4 border border-black px-2 py-1 font-black">FEE RECEIPT</p><p className="mt-1">School Copy</p></div></div><div className="mt-3 flex items-center justify-between font-serif text-[14px]"><span>No. <b>{receiptNo}</b></span><span>Receipt generated by Orison ERP</span></div></div>;
+const SchoolHeader = ({ receiptNo, date, academicYear }) => <div className="border-b-2 border-black pb-3"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 border-black bg-[#f5f5f5] text-center font-serif text-[13px] font-black leading-tight">ORISON<br />SCHOOL</div><div className="font-serif"><p className="text-[24px] font-black leading-tight">ORISON MODEL SCHOOL</p><p className="text-[14px] font-bold">ACADEMIC YEAR ({academicYear || '2026–27'})</p><p className="mt-1 text-[13px]">School Campus, Hyderabad · Ph: 00000 00000</p></div></div><div className="shrink-0 pt-2 text-right font-serif text-[13px]"><p>Date: <b>{date}</b></p><p className="mt-4 border border-black px-2 py-1 font-black">FEE RECEIPT</p><p className="mt-1">School Copy</p></div></div><div className="mt-3 flex items-center justify-between font-serif text-[14px]"><span>No. <b>{receiptNo}</b></span><span>Receipt generated by Orison ERP</span></div></div>;
 
-const ReceiptModal = ({ student, fee, amount, setAmount, discount, setDiscount, discountReason, setDiscountReason, method, setMethod, onClose, onSubmit, saving }) => {
+const ReceiptModal = ({ student, fee, amount, setAmount, discount, setDiscount, discountReason, setDiscountReason, method, setMethod, transactionReference, setTransactionReference, onClose, onSubmit, saving }) => {
   const after = Math.max(0, Number(fee.due || 0) - Number(amount || 0) - Number(discount || 0));
-  return <div className="fixed inset-0 z-50 overflow-auto bg-black/50 p-4"><div className="mx-auto my-6 w-full max-w-3xl bg-white p-3 shadow-2xl"><div className="border-2 border-black p-5 font-serif text-black"><div className="flex justify-end"><button onClick={onClose} className="mb-2 inline-flex items-center gap-1 text-[12px] font-sans text-[#555]"><X size={15} /> Close</button></div><SchoolHeader receiptNo="Draft" date={new Date().toLocaleDateString('en-GB')} academicYear={fee.academic_year} /><div className="grid grid-cols-2 border-b border-black py-3 text-[14px]"><p>Adm No: <b>{student.admission_no || '—'}</b></p><p>Name: <b>{student.name}</b></p><p>FName: <b>{student.parent_name || student.father_name || '—'}</b></p><p>Class: <b>{student.class_name} — {student.section}</b></p></div><table className="w-full border-collapse text-[14px]"><thead><tr className="border-b border-black"><th className="border-r border-black p-2 text-left">Sno</th><th className="border-r border-black p-2 text-left">Description</th><th className="border-r border-black p-2 text-left">Mode of Pay</th><th className="p-2 text-right">Amount</th></tr></thead><tbody><tr className="border-b border-black"><td className="border-r border-black p-2">1.</td><td className="border-r border-black p-2"><b>{fee.fee_name || 'School Fee'}</b><span className="block text-[11px]">{fee.category || 'Fee'}</span></td><td className="border-r border-black p-2"><select value={method} onChange={(event) => setMethod(event.target.value)} className="w-full bg-transparent font-serif outline-none"><option>Cash</option><option>Card</option><option>Online</option></select></td><td className="p-2"><input type="number" min="0" max={fee.due} value={amount} onChange={(event) => setAmount(event.target.value)} className="w-full bg-transparent text-right font-bold outline-none" /></td></tr></tbody></table><div className="grid grid-cols-1 gap-3 border-b border-black py-3 md:grid-cols-2"><label className="text-[12px] font-sans font-semibold">Approved Discount (₹)<input className="mt-1 h-9 w-full border border-gray-400 px-2 font-serif text-[14px]" type="number" min="0" max={fee.due} value={discount} onChange={(event) => setDiscount(event.target.value)} /></label><label className="text-[12px] font-sans font-semibold">Discount approval note<textarea className="mt-1 h-9 w-full border border-gray-400 px-2 py-1 font-serif text-[13px]" value={discountReason} onChange={(event) => setDiscountReason(event.target.value)} placeholder="KDM verbal approval / reason" /></label></div><div className="border-b border-black py-3 text-[14px]"><p><b>NOTE:</b> Fee once paid will not be refunded.</p><div className="mt-3 flex justify-between border-t border-black pt-2 text-[16px] font-bold"><span>Total Received</span><span>{money(amount)}</span></div><div className="mt-2 flex justify-between"><span>Discount</span><span>{money(discount)}</span></div><div className="mt-2 flex justify-between"><span>Due</span><span>{money(after)}</span></div><p className="mt-3 text-right font-bold">Authorised Signatory</p></div><div className="mt-5 flex justify-end gap-3 font-sans"><Btn variant="outline" onClick={onClose}>Cancel</Btn><Btn icon={CheckCircle2} onClick={onSubmit} disabled={saving}>{saving ? 'Submitting…' : 'Submit Receipt'}</Btn></div></div></div></div>;
+  return <div className="fixed inset-0 z-50 overflow-auto bg-black/50 p-4"><div className="mx-auto my-6 w-full max-w-3xl bg-white p-3 shadow-2xl"><div className="border-2 border-black p-5 font-serif text-black"><div className="flex justify-end"><button onClick={onClose} className="mb-2 inline-flex items-center gap-1 text-[13px] font-sans text-[#555]"><X size={15} /> Close</button></div><SchoolHeader receiptNo="Draft" date={new Date().toLocaleDateString('en-GB')} academicYear={fee.academic_year} /><div className="grid grid-cols-2 border-b border-black py-3 text-[14px]"><p>Adm No: <b>{student.admission_no || '—'}</b></p><p>Name: <b>{student.name}</b></p><p>FName: <b>{student.parent_name || student.father_name || '—'}</b></p><p>Class: <b>{student.class_name} — {student.section}</b></p></div><table className="w-full border-collapse text-[14px]"><thead><tr className="border-b border-black"><th className="border-r border-black p-2 text-left">Sno</th><th className="border-r border-black p-2 text-left">Description</th><th className="border-r border-black p-2 text-left">Mode of Pay</th><th className="p-2 text-right">Amount</th></tr></thead><tbody><tr className="border-b border-black"><td className="border-r border-black p-2">1.</td><td className="border-r border-black p-2"><b>{fee.fee_name || 'School Fee'}</b><span className="block text-[13px]">{fee.category || 'Fee'}</span></td><td className="border-r border-black p-2"><select value={method} onChange={(event) => setMethod(event.target.value)} className="w-full bg-transparent font-serif outline-none">{['Cash', 'UPI', 'Card', 'Cheque', 'Bank Transfer', 'Demand Draft'].map((item) => <option key={item}>{item}</option>)}</select>{method !== 'Cash' && <input value={transactionReference} onChange={(event) => setTransactionReference(event.target.value)} placeholder={method === 'Cheque' || method === 'Demand Draft' ? 'Cheque / DD number' : 'UTR / transaction ID'} className="mt-1 w-full border-b border-dashed border-gray-400 bg-transparent font-sans text-[12px] outline-none" />}</td><td className="p-2"><input type="number" min="0" max={fee.due} value={amount} onChange={(event) => setAmount(event.target.value)} className="w-full bg-transparent text-right font-bold outline-none" /></td></tr></tbody></table><div className="grid grid-cols-1 gap-3 border-b border-black py-3 md:grid-cols-2"><label className="text-[13px] font-sans font-semibold">Approved Discount (₹)<input className="mt-1 h-9 w-full border border-gray-400 px-2 font-serif text-[14px]" type="number" min="0" max={fee.due} value={discount} onChange={(event) => setDiscount(event.target.value)} /></label><label className="text-[13px] font-sans font-semibold">Discount approval note<textarea className="mt-1 h-9 w-full border border-gray-400 px-2 py-1 font-serif text-[14px]" value={discountReason} onChange={(event) => setDiscountReason(event.target.value)} placeholder="KDM verbal approval / reason" /></label></div><div className="border-b border-black py-3 text-[14px]"><p><b>NOTE:</b> Fee once paid will not be refunded.</p><div className="mt-3 flex justify-between border-t border-black pt-2 text-[16px] font-bold"><span>Total Received</span><span>{money(amount)}</span></div><div className="mt-2 flex justify-between"><span>Discount</span><span>{money(discount)}</span></div><div className="mt-2 flex justify-between"><span>Due</span><span>{money(after)}</span></div><p className="mt-3 text-right font-bold">Authorised Signatory</p></div><div className="mt-5 flex justify-end gap-3 font-sans"><Btn variant="outline" onClick={onClose}>Cancel</Btn><Btn icon={CheckCircle2} onClick={onSubmit} disabled={saving}>{saving ? 'Submitting…' : 'Submit Receipt'}</Btn></div></div></div></div>;
 };
 
-const ReceiptView = ({ receipt, student, onClose }) => <div className="fixed inset-0 z-50 overflow-auto bg-black/50 p-4"><div className="mx-auto my-6 w-full max-w-3xl bg-white p-3 shadow-2xl"><div id="fee-receipt" className="border-2 border-black p-5 font-serif text-black"><SchoolHeader receiptNo={receipt.id} date={new Date(receipt.paid_at).toLocaleDateString('en-GB')} academicYear={receipt.academic_year} /><div className="grid grid-cols-2 border-b border-black py-3 text-[14px]"><p>Adm No: <b>{receipt.admission_no || student?.admission_no || '—'}</b></p><p>Name: <b>{receipt.student_name || student?.name}</b></p><p>FName: <b>{receipt.parent_name || student?.parent_name || student?.father_name || '—'}</b></p><p>Class: <b>{receipt.class_name || student?.class_name} — {receipt.section || student?.section}</b></p></div><table className="w-full border-collapse text-[14px]"><thead><tr className="border-b border-black"><th className="border-r border-black p-2 text-left">Sno</th><th className="border-r border-black p-2 text-left">Description</th><th className="border-r border-black p-2 text-left">Mode of Pay</th><th className="p-2 text-right">Amount</th></tr></thead><tbody><tr className="border-b border-black"><td className="border-r border-black p-2">1.</td><td className="border-r border-black p-2"><b>{receipt.fee_name}</b></td><td className="border-r border-black p-2">{receipt.method}</td><td className="p-2 text-right font-bold">{money(receipt.amount)}</td></tr></tbody></table><div className="border-b border-black py-3 text-[14px]"><p><b>NOTE:</b> Fee once paid will not be refunded.</p>{receipt.discount > 0 && <div className="mt-3 flex justify-between"><span>Approved Discount</span><b>{money(receipt.discount)}</b></div>}<div className="mt-3 flex justify-between border-t border-black pt-2 text-[16px] font-bold"><span>Total Received</span><span>{money(receipt.amount)}</span></div><div className="mt-2 flex justify-between"><span>Due</span><span>{money(receipt.balance_after)}</span></div><p className="mt-4 text-right font-bold">Authorised Signatory</p></div><p className="mt-3 font-sans text-[11px] text-[#555]">Parent receipt notification is queued by SMS, WhatsApp and app push.</p><div className="mt-5 flex justify-end gap-3 font-sans"><Btn variant="outline" icon={Printer} onClick={printPage}>Print Receipt</Btn><Btn onClick={onClose}>Done</Btn></div></div></div></div>;
+const ReceiptView = ({ receipt, student, onClose }) => <div className="fixed inset-0 z-50 overflow-auto bg-black/50 p-4"><div className="mx-auto my-6 w-full max-w-3xl bg-white p-3 shadow-2xl"><div id="fee-receipt" className="border-2 border-black p-5 font-serif text-black"><SchoolHeader receiptNo={receipt.id} date={new Date(receipt.paid_at).toLocaleDateString('en-GB')} academicYear={receipt.academic_year} /><div className="grid grid-cols-2 border-b border-black py-3 text-[14px]"><p>Adm No: <b>{receipt.admission_no || student?.admission_no || '—'}</b></p><p>Name: <b>{receipt.student_name || student?.name}</b></p><p>FName: <b>{receipt.parent_name || student?.parent_name || student?.father_name || '—'}</b></p><p>Class: <b>{receipt.class_name || student?.class_name} — {receipt.section || student?.section}</b></p></div><table className="w-full border-collapse text-[14px]"><thead><tr className="border-b border-black"><th className="border-r border-black p-2 text-left">Sno</th><th className="border-r border-black p-2 text-left">Description</th><th className="border-r border-black p-2 text-left">Mode of Pay</th><th className="p-2 text-right">Amount</th></tr></thead><tbody><tr className="border-b border-black"><td className="border-r border-black p-2">1.</td><td className="border-r border-black p-2"><b>{receipt.fee_name}</b></td><td className="border-r border-black p-2">{receipt.method}</td><td className="p-2 text-right font-bold">{money(receipt.amount)}</td></tr></tbody></table><div className="border-b border-black py-3 text-[14px]"><p><b>NOTE:</b> Fee once paid will not be refunded.</p>{receipt.discount > 0 && <div className="mt-3 flex justify-between"><span>Approved Discount</span><b>{money(receipt.discount)}</b></div>}<div className="mt-3 flex justify-between border-t border-black pt-2 text-[16px] font-bold"><span>Total Received</span><span>{money(receipt.amount)}</span></div><div className="mt-2 flex justify-between"><span>Due</span><span>{money(receipt.balance_after)}</span></div><p className="mt-4 text-right font-bold">Authorised Signatory</p></div><p className="mt-3 font-sans text-[13px] text-[#555]">Parent receipt notification is queued by SMS, WhatsApp and app push.</p><div className="mt-5 flex justify-end gap-3 font-sans"><Btn variant="outline" icon={Printer} onClick={printPage}>Print Receipt</Btn><Btn onClick={onClose}>Done</Btn></div></div></div></div>;
 
-export const FeeReceipts = () => { const [rows, setRows] = useState([]); const [q, setQ] = useState(''); useEffect(() => { api.get('/fees/receipts').then(({ data }) => setRows(data)).catch(() => setRows([])); }, []); const shown = rows.filter((item) => `${item.id} ${item.student_name} ${item.admission_no}`.toLowerCase().includes(q.toLowerCase())); return <Layout><PageTitle title="Receipts" subtitle="All submitted fee receipts are available for download, printing and parent follow-up." actions={<Btn variant="outline" icon={Download} onClick={() => downloadCSV('fee-receipts.csv', ['Receipt', 'Student', 'Fee', 'Amount', 'Discount', 'Method', 'Date'], shown.map((item) => [item.id, item.student_name, item.fee_name, item.amount, item.discount, item.method, item.paid_at]))}>Export CSV</Btn>} /><Card title="Fee Receipts" action={<div className="relative"><Search size={16} className="absolute left-3 top-3 text-[#999]" /><input className="h-10 rounded-lg border border-gray-200 pl-9 pr-3 text-[13px]" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Search receipt or student…" /></div>} pad="p-0"><div className="overflow-x-auto"><Table columns={[{ label: 'Receipt' }, { label: 'Student' }, { label: 'Fee' }, { label: 'Received' }, { label: 'Discount' }, { label: 'Payment Mode' }, { label: 'Date' }]}>{shown.map((item) => <tr key={item.id} className="border-b border-gray-50"><td className="px-6 py-3 text-[12px] font-semibold text-[#4F46E5]">{item.id}</td><td className="py-3 text-[13px] font-semibold">{item.student_name}<span className="block text-[11px] font-normal text-[#999]">{item.admission_no || '—'}</span></td><td className="py-3 text-[13px]">{item.fee_name}</td><td className="py-3 text-[13px] font-semibold text-green-700">{money(item.amount)}</td><td className="py-3 text-[13px]">{money(item.discount)}</td><td className="py-3"><Badge color="blue">{item.method}</Badge></td><td className="py-3 pr-6 text-[12px]">{item.paid_at ? new Date(item.paid_at).toLocaleString() : '—'}</td></tr>)}</Table>{!shown.length && <p className="py-16 text-center text-[13px] text-[#999]">No receipts have been submitted yet.</p>}</div></Card></Layout>; };
+export const FeeReceipts = () => { const [rows, setRows] = useState([]); const [q, setQ] = useState(''); useEffect(() => { api.get('/fees/receipts').then(({ data }) => setRows(data)).catch(() => setRows([])); }, []); const shown = rows.filter((item) => `${item.id} ${item.student_name} ${item.admission_no}`.toLowerCase().includes(q.toLowerCase())); return <Layout><PageTitle title="Receipts" subtitle="All submitted fee receipts are available for download, printing and parent follow-up." actions={<Btn variant="outline" icon={Download} onClick={() => downloadCSV('fee-receipts.csv', ['Receipt', 'Student', 'Fee', 'Amount', 'Discount', 'Method', 'Date'], shown.map((item) => [item.id, item.student_name, item.fee_name, item.amount, item.discount, item.method, item.paid_at]))}>Export CSV</Btn>} /><Card title="Fee Receipts" action={<div className="relative"><Search size={16} className="absolute left-3 top-3 text-[#999]" /><input className="h-10 rounded-lg border border-gray-200 pl-9 pr-3 text-[14px]" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Search receipt or student…" /></div>} pad="p-0"><div className="overflow-x-auto"><Table columns={[{ label: 'Receipt' }, { label: 'Student' }, { label: 'Fee' }, { label: 'Received' }, { label: 'Discount' }, { label: 'Payment Mode' }, { label: 'Date' }]}>{shown.map((item) => <tr key={item.id} className="border-b border-gray-50"><td className="px-6 py-3 text-[13px] font-semibold text-[#4F46E5]">{item.id}</td><td className="py-3 text-[14px] font-semibold"><StudentLink id={item.student_id} name={item.student_name} /><span className="block text-[13px] font-normal text-[#999]">{item.admission_no || '—'}</span></td><td className="py-3 text-[14px]">{item.fee_name}</td><td className="py-3 text-[14px] font-semibold text-green-700">{money(item.amount)}</td><td className="py-3 text-[14px]">{money(item.discount)}</td><td className="py-3"><Badge color="blue">{item.method}</Badge></td><td className="py-3 pr-6 text-[13px]">{item.paid_at ? new Date(item.paid_at).toLocaleString() : '—'}</td></tr>)}</Table>{!shown.length && <p className="py-16 text-center text-[14px] text-[#999]">No receipts have been submitted yet.</p>}</div></Card></Layout>; };
 
 export const FeeManagement = ViewCollections;
 
@@ -438,16 +461,12 @@ export const FeeReceiptsArchive = () => {
 
   return (
     <Layout>
-      <PageTitle
-        title="Receipts"
-        subtitle="Latest payment receipts are shown below. Use Class, Section or payment month/year only when you need a specific earlier receipt."
-        actions={<Btn variant="outline" icon={Download} onClick={() => downloadCSV('fee-receipts.csv', ['Receipt', 'Student', 'Admission No.', 'Class', 'Section', 'Fee', 'Received', 'Discount', 'Payment Mode', 'Date'], shown.map((item) => [item.id, item.student_name, item.admission_no, item.class_name, item.section, item.fee_name, item.amount, item.discount, item.method, item.paid_at]))}>Export List</Btn>}
-      />
+      <FeeHero eyebrow="Receipt archive" title="Every payment proof, ready when a parent asks." copy="Search the latest receipts or narrow the archive by class, section and payment month without reading through a long register." active="/fee/receipts" metrics={[{label:'Visible receipts',value:shown.length,icon:Receipt},{label:'Classes filtered',value:filters.class_name||'All',icon:FileText},{label:'Payment month',value:paymentMonth||'All',icon:CalendarDays}]}/>
 
       <Card className="mb-6" title="Find a specific previous receipt" subtitle="These filters are optional. Select Class, Section and payment month/year only for an earlier receipt request.">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2"><GroupFilters structure={structure} value={filters} onChange={setFilters} /></div>
-          <label className="text-[12px] font-medium text-[#555]">
+          <label className="text-[13px] font-medium text-[#555]">
             Payment month and year
             <input className={input} type="month" value={paymentMonth} onChange={(event) => setPaymentMonth(event.target.value)} />
           </label>
@@ -458,26 +477,26 @@ export const FeeReceiptsArchive = () => {
       <Card
         title={filterDescription ? 'Filtered Fee Receipts' : 'Latest Fee Payments'}
         subtitle={filterDescription ? `Showing receipts for ${filterDescription}.` : 'Most recently received payments across all Classes and Sections.'}
-        action={<div className="relative"><Search size={16} className="absolute left-3 top-3 text-[#999]" /><input className="h-10 rounded-lg border border-gray-200 pl-9 pr-3 text-[13px]" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Search student or receipt…" /></div>}
+        action={<div className="relative"><Search size={16} className="absolute left-3 top-3 text-[#999]" /><input className="h-10 rounded-lg border border-gray-200 pl-9 pr-3 text-[14px]" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Search student or receipt…" /></div>}
         pad="p-0"
       >
         <div className="overflow-x-auto">
           <Table columns={[{ label: 'Receipt' }, { label: 'Student' }, { label: 'Class' }, { label: 'Section' }, { label: 'Fee' }, { label: 'Received' }, { label: 'Payment Mode' }, { label: 'Date' }, { label: 'Receipt Actions' }]}>
             {shown.map((item) => (
               <tr key={item.id} className="border-b border-gray-50">
-                <td className="px-6 py-3 text-[12px] font-semibold text-[#4F46E5]">{item.id}</td>
-                <td className="py-3 text-[13px] font-semibold">{item.student_name}<span className="block text-[11px] font-normal text-[#999]">{item.admission_no || '—'}</span></td>
-                <td className="py-3 text-[13px]">{item.class_name || '—'}</td>
-                <td className="py-3 text-[13px]">{item.section || '—'}</td>
-                <td className="py-3 text-[13px]">{item.fee_name}</td>
-                <td className="py-3 text-[13px] font-semibold text-green-700">{money(item.amount)}</td>
+                <td className="px-6 py-3 text-[13px] font-semibold text-[#4F46E5]">{item.id}</td>
+                <td className="py-3 text-[14px] font-semibold"><StudentLink id={item.student_id} name={item.student_name} /><span className="block text-[13px] font-normal text-[#999]">{item.admission_no || '—'}</span></td>
+                <td className="py-3 text-[14px]">{item.class_name || '—'}</td>
+                <td className="py-3 text-[14px]">{item.section || '—'}</td>
+                <td className="py-3 text-[14px]">{item.fee_name}</td>
+                <td className="py-3 text-[14px] font-semibold text-green-700">{money(item.amount)}</td>
                 <td className="py-3"><Badge color="blue">{item.method}</Badge></td>
-                <td className="py-3 text-[12px]">{item.paid_at ? new Date(item.paid_at).toLocaleString() : '—'}</td>
-                <td className="py-3 pr-6"><div className="flex gap-3"><button onClick={() => setOpen(item)} className="text-[12px] font-semibold text-[#4F46E5]">View / Print</button><button onClick={() => downloadReceiptFile(item)} className="text-[12px] font-semibold text-[#555]">Download</button></div></td>
+                <td className="py-3 text-[13px]">{item.paid_at ? new Date(item.paid_at).toLocaleString() : '—'}</td>
+                <td className="py-3 pr-6"><div className="flex gap-3"><button onClick={() => setOpen(item)} className="text-[13px] font-semibold text-[#4F46E5]">View / Print</button><button onClick={() => downloadReceiptFile(item)} className="text-[13px] font-semibold text-[#555]">Download</button></div></td>
               </tr>
             ))}
           </Table>
-          {!shown.length && <p className="py-16 text-center text-[13px] text-[#999]">No receipt matches the selected filters.</p>}
+          {!shown.length && <p className="py-16 text-center text-[14px] text-[#999]">No receipt matches the selected filters.</p>}
         </div>
       </Card>
 
@@ -499,22 +518,23 @@ export const RazorpayVerification = () => {
   const shown = rows.filter((row) => `${row.payment_id} ${row.order_id} ${row.student_name} ${row.fee_name}`.toLowerCase().includes(query.toLowerCase()));
   const statusColour = (status) => status === 'Verified' ? 'green' : status === 'Failed' ? 'red' : status === 'Refunded' ? 'purple' : 'amber';
   return <Layout>
-    <PageTitle title="Razorpay Payment Verification" subtitle="Read-only gateway verification trail. Razorpay signatures are checked automatically; staff do not approve or reject parent payments." actions={<Btn variant="outline" icon={RefreshCw} onClick={load}>Refresh</Btn>} />
+    <FeeHero eyebrow="Integration reserved" title="Online payment verification is ready for your future gateway connection." copy="No Razorpay dependency is assumed today. Once the vendor agreement and credentials are confirmed, verified transactions can appear here automatically." active="/fee/payment-verification" metrics={[{label:'Integration',value:'Pending',icon:LockKeyhole},{label:'Manual collection',value:'Active',icon:CheckCircle2},{label:'Gateway records',value:rows.length,icon:CreditCard}]}/>
+    <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[13px] leading-5 text-amber-800"><LockKeyhole className="mt-0.5 h-5 w-5 shrink-0"/><div><b>Gateway not activated.</b><p>No live payment initiation or automatic verification should be used until the Razorpay tie-up is completed and credentials are configured.</p></div></div>
     <StatCards items={[
       { label: 'Verified payments', value: rows.filter((row) => row.status === 'Verified').length, icon: ShieldCheck, tint: 'bg-emerald-50 text-emerald-700' },
       { label: 'Pending confirmation', value: rows.filter((row) => row.status === 'Created').length, icon: CreditCard, tint: 'bg-amber-50 text-amber-700' },
       { label: 'Failed verification', value: rows.filter((row) => row.status === 'Failed').length, icon: X, tint: 'bg-indigo-50 text-indigo-700' },
       { label: 'Verified value', value: money(rows.filter((row) => row.status === 'Verified').reduce((sum, row) => sum + Number(row.amount || 0), 0)), icon: IndianRupee, tint: 'bg-blue-50 text-blue-700' },
     ]} />
-    <Card title="Gateway transaction audit" subtitle="Razorpay order, payment and signature verification status with automatic ledger posting." action={<div className="relative"><Search size={16} className="absolute left-3 top-3 text-[#999]" /><input className="h-10 rounded-lg border border-gray-200 pl-9 pr-3 text-[13px]" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search payment or student…" /></div>} pad="p-0">
+    <Card title="Gateway transaction audit" subtitle="Razorpay order, payment and signature verification status with automatic ledger posting." action={<div className="relative"><Search size={16} className="absolute left-3 top-3 text-[#999]" /><input className="h-10 rounded-lg border border-gray-200 pl-9 pr-3 text-[14px]" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search payment or student…" /></div>} pad="p-0">
       <div className="overflow-x-auto"><Table columns={[{label:'Student / Fee'},{label:'Razorpay Order'},{label:'Payment ID'},{label:'Amount'},{label:'Verification'},{label:'Updated'}]}>
         {shown.map((row) => <tr key={row.id || row.order_id} className="border-b border-gray-50">
-          <td className="px-6 py-3 text-[13px] font-semibold">{row.student_name || '—'}<span className="block text-[11px] font-normal text-[#999]">{row.fee_name || row.fee_id}</span></td>
-          <td className="py-3 font-mono text-[11px]">{row.order_id || '—'}</td><td className="py-3 font-mono text-[11px]">{row.payment_id || 'Awaiting payment'}</td>
-          <td className="py-3 text-[13px] font-semibold">{money(row.amount)}</td><td className="py-3"><Badge color={statusColour(row.status)}>{row.status}</Badge>{row.failure_reason && <span className="mt-1 block max-w-[220px] text-[10px] text-indigo-600">{row.failure_reason}</span>}</td>
-          <td className="py-3 pr-6 text-[11px] text-[#777]">{row.updated_at ? new Date(row.updated_at).toLocaleString() : '—'}<span className="block text-[10px] text-[#aaa]">{row.updated_by || 'Razorpay webhook'}</span></td>
+          <td className="px-6 py-3 text-[14px] font-semibold">{row.student_name || '—'}<span className="block text-[13px] font-normal text-[#999]">{row.fee_name || row.fee_id}</span></td>
+          <td className="py-3 font-mono text-[13px]">{row.order_id || '—'}</td><td className="py-3 font-mono text-[13px]">{row.payment_id || 'Awaiting payment'}</td>
+          <td className="py-3 text-[14px] font-semibold">{money(row.amount)}</td><td className="py-3"><Badge color={statusColour(row.status)}>{row.status}</Badge>{row.failure_reason && <span className="mt-1 block max-w-[220px] text-[12px] text-indigo-600">{row.failure_reason}</span>}</td>
+          <td className="py-3 pr-6 text-[13px] text-[#777]">{row.updated_at ? new Date(row.updated_at).toLocaleString() : '—'}<span className="block text-[12px] text-[#aaa]">{row.updated_by || 'Razorpay webhook'}</span></td>
         </tr>)}
-      </Table>{!loading && !shown.length && <p className="py-16 text-center text-[13px] text-[#999]">No Razorpay transactions found.</p>}{loading && <p className="py-16 text-center text-[13px] text-[#999]">Loading gateway transactions…</p>}</div>
+      </Table>{!loading && !shown.length && <p className="py-16 text-center text-[14px] text-[#999]">No Razorpay transactions found.</p>}{loading && <p className="py-16 text-center text-[14px] text-[#999]">Loading gateway transactions…</p>}</div>
     </Card>
   </Layout>;
 };

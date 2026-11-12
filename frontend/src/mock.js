@@ -3,7 +3,8 @@ import {
   LayoutDashboard, Users, GraduationCap, CalendarCheck, UserCog, Briefcase,
   Wallet, FileText, ClipboardList, BookOpen, CalendarDays, Boxes, Receipt,
   Bell, Bus, MessageSquare, UserCheck, HelpCircle, BadgeDollarSign,
-  Fingerprint, Building2, Settings, TicketCheck
+  Fingerprint, Building2, Settings, TicketCheck, Smartphone, Library, BedDouble, Award,
+  IdCard, Landmark, Images, ListChecks, MessageSquareHeart
 } from 'lucide-react';
 
 // Sidebar navigation config
@@ -22,8 +23,8 @@ export const NAV_ITEMS = [
     key: 'admissions', label: 'Admissions Management', icon: UserCheck,
     children: [
       { label: 'Dashboard', path: '/admissions' },
-      { label: 'Enquiries & Follow-ups', path: '/admissions/enquiries' },
-      { label: 'Applications', path: '/admissions/applications' },
+      { label: 'Enquiries & Visits', path: '/admissions/enquiries' },
+      { label: 'Admission Processing', path: '/admissions/applications' },
       { label: 'Reports', path: '/admissions/reports' },
     ],
   },
@@ -65,8 +66,9 @@ export const NAV_ITEMS = [
       { label: 'Create Fees', path: '/fee/create' },
       { label: 'Collect Fee', path: '/fee/collect' },
       { label: 'View Collections', path: '/fee/collections' },
+      { label: 'Fee Control Center', path: '/fee/control-center' },
       { label: 'Receipts', path: '/fee/receipts' },
-      { label: 'Razorpay Verification', path: '/fee/payment-verification' },
+      { label: 'Online Payments', path: '/fee/payment-verification' },
     ],
   },
   { key: 'collections', label: 'Collection Intelligence', icon: Receipt, path: '/collections' },
@@ -163,14 +165,29 @@ export const NAV_ITEMS = [
       { label: 'Consolidated Reports', path: '/multi-branch/reports' },
     ],
   },
+  { key: 'parent_center', label: 'Parent App Center', icon: Smartphone, path: '/parent-center' },
+  { key: 'compliance', label: 'Compliance (APAAR · UDISE+)', icon: Landmark, path: '/compliance' },
+  { key: 'certificates', label: 'Certificates', icon: Award, path: '/certificates' },
+  { key: 'idcards', label: 'ID Cards', icon: IdCard, path: '/id-cards' },
+  { key: 'consents', label: 'Consent Forms', icon: ListChecks, path: '/consents' },
+  {
+    key: 'library', label: 'Library', icon: Library,
+    children: [
+      { label: 'Book Catalogue', path: '/library' },
+      { label: 'Issue & Return', path: '/library/issues' },
+    ],
+  },
+  { key: 'hostel', label: 'Hostel', icon: BedDouble, path: '/hostel' },
+  { key: 'events', label: 'Events & Gallery', icon: Images, path: '/events' },
+  { key: 'surveys', label: 'Surveys & Feedback', icon: MessageSquareHeart, path: '/surveys' },
   { key: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
 ];
 
 // Current student for profile pages
 export const STUDENT = {
-  name: 'Marcus Thorne',
+  name: 'Arjun Reddy',
   id: 'EP-2024-0812',
-  className: 'Grade 11 - Section B',
+  className: 'Class 11 - Section B',
   roll: '042',
   balance: '₹11,450.00',
   status: 'Active',
@@ -241,18 +258,18 @@ export const CLASS_LIST = [
 
 // View Students list
 export const STUDENTS = [
-  { id: 'EP-2024-0812', name: 'Marcus Thorne', className: 'Grade 11 - B', roll: '042', status: 'Active', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=faces' },
+  { id: 'EP-2024-0812', name: 'Arjun Reddy', className: 'Class 11 - B', roll: '042', status: 'Active', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=faces' },
   { id: 'ADM-2024-0892', name: 'Aarav Sharma', className: 'Class 10 - B', roll: '018', status: 'Active', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&h=100&fit=crop&crop=faces' },
-  { id: 'EP-2024-0455', name: 'Sophia Martinez', className: 'Grade 10 - A', roll: '021', status: 'Active', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&crop=faces' },
-  { id: 'EP-2024-0311', name: 'Elara Vance', className: 'Grade 10 - A', roll: '009', status: 'Active', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=faces' },
-  { id: 'EP-2024-0790', name: 'Benjamin Thorne', className: 'Grade 10 - A', roll: '012', status: 'Inactive', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=faces' },
+  { id: 'EP-2024-0455', name: 'Ananya Iyer', className: 'Class 10 - A', roll: '021', status: 'Active', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&crop=faces' },
+  { id: 'EP-2024-0311', name: 'Diya Patel', className: 'Class 10 - A', roll: '009', status: 'Active', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=faces' },
+  { id: 'EP-2024-0790', name: 'Rohan Reddy', className: 'Class 10 - A', roll: '012', status: 'Inactive', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=faces' },
 ];
 
 // Marks
 export const MARKS_ROWS = [
-  { roll: '#102401', name: 'Benjamin Thorne', attendance: 'P', written: 62, practical: 28, total: 90 },
-  { roll: '#102402', name: 'Sophia Martinez', attendance: 'P', written: 55, practical: 24, total: 79 },
-  { roll: '#102404', name: 'Elara Vance', attendance: 'A', written: 0, practical: 29, total: 97 },
+  { roll: '#102401', name: 'Rohan Reddy', attendance: 'P', written: 62, practical: 28, total: 90 },
+  { roll: '#102402', name: 'Ananya Iyer', attendance: 'P', written: 55, practical: 24, total: 79 },
+  { roll: '#102404', name: 'Diya Patel', attendance: 'A', written: 0, practical: 29, total: 97 },
 ];
 
 // Leave Management
@@ -262,12 +279,12 @@ export const PENDING_LEAVES = [
   { name: 'Jerome Bell', detail: 'Annual Leave • 20 Oct – 25 Oct' },
 ];
 export const LEAVE_HISTORY = [
-  { name: 'Cody Fisher', type: 'Medical', from: '01 Oct 2025', to: '03 Oct 2025', days: 3, status: 'Approved', avatar: 'https://i.pravatar.cc/80?img=12' },
-  { name: 'Esther Howard', type: 'Casual', from: '28 Sep 2025', to: '28 Sep 2025', days: 1, status: 'Rejected', avatar: 'https://i.pravatar.cc/80?img=45' },
-  { name: 'Jenny Wilson', type: 'Maternity', from: '15 Aug 2025', to: '15 Nov 2025', days: 92, status: 'Approved', avatar: 'https://i.pravatar.cc/80?img=32' },
-  { name: 'Guy Hawkins', type: 'Annual', from: '10 Sep 2025', to: '15 Sep 2025', days: 6, status: 'Pending', avatar: 'https://i.pravatar.cc/80?img=15' },
-  { name: 'Marvin McKinney', type: 'Sick', from: '05 Sep 2025', to: '07 Sep 2025', days: 3, status: 'Approved', avatar: 'https://i.pravatar.cc/80?img=13' },
-  { name: 'Bessie Cooper', type: 'Casual', from: '01 Sep 2025', to: '01 Sep 2025', days: 1, status: 'Rejected', avatar: 'https://i.pravatar.cc/80?img=47' },
+  { name: 'Ravi Kumar', type: 'Medical', from: '01 Oct 2025', to: '03 Oct 2025', days: 3, status: 'Approved', avatar: 'https://i.pravatar.cc/80?img=12' },
+  { name: 'Meena Pillai', type: 'Casual', from: '28 Sep 2025', to: '28 Sep 2025', days: 1, status: 'Rejected', avatar: 'https://i.pravatar.cc/80?img=45' },
+  { name: 'Kavitha Rao', type: 'Maternity', from: '15 Aug 2025', to: '15 Nov 2025', days: 92, status: 'Approved', avatar: 'https://i.pravatar.cc/80?img=32' },
+  { name: 'Suresh Babu', type: 'Annual', from: '10 Sep 2025', to: '15 Sep 2025', days: 6, status: 'Pending', avatar: 'https://i.pravatar.cc/80?img=15' },
+  { name: 'Imran Khan', type: 'Sick', from: '05 Sep 2025', to: '07 Sep 2025', days: 3, status: 'Approved', avatar: 'https://i.pravatar.cc/80?img=13' },
+  { name: 'Fatima Sheikh', type: 'Casual', from: '01 Sep 2025', to: '01 Sep 2025', days: 1, status: 'Rejected', avatar: 'https://i.pravatar.cc/80?img=47' },
 ];
 
 // Exam quick summary

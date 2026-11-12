@@ -90,3 +90,4 @@ credentials.json
 *.key
 .credentials
 frontend/node_modules/.cache/default-development/0.pack
+_claude_backup_2026-11-11/
